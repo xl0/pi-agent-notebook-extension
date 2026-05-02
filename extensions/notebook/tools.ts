@@ -71,7 +71,7 @@ export async function runNotebookEdit(params: NotebookEditParams): Promise<Noteb
   await saveNotebook(params.path, notebook);
   const result = readCellById(notebook, params.cellId);
   return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    content: [{ type: "text", text: `Successfully replaced ${params.edits.length} block(s) in cell ${params.cellId} of ${params.path}.` }],
     details: result,
   };
 }
