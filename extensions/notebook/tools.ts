@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -37,11 +37,17 @@ export const notebookInsertParams = Type.Object({
   source: Type.String({ description: "Source for the new cell." }),
 });
 
+export const notebookDeleteParams = Type.Object({
+  path: Type.String({ description: "Path to an .ipynb notebook." }),
+  cellId: Type.String({ description: "Cell id to delete." }),
+});
+
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>;
 export type NotebookReadParams = Static<typeof notebookReadParams>;
 export type NotebookWriteParams = Static<typeof notebookWriteParams>;
 export type NotebookEditParams = Static<typeof notebookEditParams>;
 export type NotebookInsertParams = Static<typeof notebookInsertParams>;
+export type NotebookDeleteParams = Static<typeof notebookDeleteParams>;
 
 export interface NotebookToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -97,12 +103,23 @@ export async function runNotebookInsert(params: NotebookInsertParams): Promise<N
   };
 }
 
+export async function runNotebookDelete(params: NotebookDeleteParams): Promise<NotebookToolResult> {
+  const notebook = await loadNotebook(params.path);
+  const result = deleteCell(notebook, params.cellId);
+  await saveNotebook(params.path, notebook);
+  return {
+    content: [{ type: "text", text: `Deleted cell ${params.cellId} from ${params.path}.` }],
+    details: result,
+  };
+}
+
 export const notebookToolRunners = {
   notebook_summary: runNotebookSummary,
   notebook_read: runNotebookRead,
   notebook_write: runNotebookWrite,
   notebook_edit: runNotebookEdit,
   notebook_insert: runNotebookInsert,
+  notebook_delete: runNotebookDelete,
 } as const;
 
 export type NotebookToolName = keyof typeof notebookToolRunners;

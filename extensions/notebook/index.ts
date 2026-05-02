@@ -1,10 +1,12 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
+  notebookDeleteParams,
   notebookEditParams,
   notebookInsertParams,
   notebookReadParams,
   notebookSummaryParams,
   notebookWriteParams,
+  runNotebookDelete,
   runNotebookEdit,
   runNotebookInsert,
   runNotebookRead,
@@ -70,6 +72,18 @@ export default function notebookExtension(pi: ExtensionAPI) {
     parameters: notebookInsertParams,
     async execute(_toolCallId, params) {
       return runNotebookInsert(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "notebook_delete",
+    label: "Notebook Delete",
+    description: "Delete one notebook cell by id.",
+    promptSnippet: "Delete a single notebook cell by id.",
+    promptGuidelines: ["Use notebook_delete to remove one notebook cell after confirming the target id with notebook_summary or notebook_read."],
+    parameters: notebookDeleteParams,
+    async execute(_toolCallId, params) {
+      return runNotebookDelete(params);
     },
   });
 }

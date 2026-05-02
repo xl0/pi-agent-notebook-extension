@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 const FIXTURE_DIR = join(import.meta.dir, "fixtures");
 import {
   applyExactSourceEdits,
+  deleteCell,
   editCellSource,
   ensureCellIds,
   formatNotebookRead,
@@ -20,7 +21,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookEdit, runNotebookInsert, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
+import { runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -174,6 +175,15 @@ describe("notebook core", () => {
     expect(() => insertCell(notebook, { index: 99, direction: "after" }, { type: "raw", source: "x" })).toThrow(
       "Cell index out of range: 99",
     );
+  });
+
+  test("deleteCell removes one cell and returns its prior read view", () => {
+    const notebook = parseNotebook(createNotebookText());
+    const deleted = deleteCell(notebook, "code-1");
+    expect(deleted.id).toBe("code-1");
+    expect(deleted.source).toBe("print(1)\nprint(2)\n");
+    expect(notebook.cells).toHaveLength(1);
+    expect(() => readCellById(notebook, "code-1")).toThrow("Cell not found: code-1");
   });
 
   test("formatNotebookSummary uses sparse key value rows", () => {
@@ -409,6 +419,42 @@ describe("notebook core", () => {
         type: "markdown",
         source: "x",
       })).rejects.toThrow("Provide exactly one of cellId or index");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookDelete returns concise confirmation and removes the cell", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const result = await runNotebookDelete({ path: fixture.path, cellId: "95cca932" });
+      expect(result.content[0]?.text).toBe(`Deleted cell 95cca932 from ${fixture.path}.`);
+      await expect(runNotebookRead({ path: fixture.path, cellId: "95cca932" })).rejects.toThrow("Cell not found: 95cca932");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookDelete works on synthetic ids", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      const result = await runNotebookDelete({ path: fixture.path, cellId: "generated-0" });
+      expect(result.content[0]?.text).toBe(`Deleted cell generated-0 from ${fixture.path}.`);
+      const remaining = await runNotebookRead({ path: fixture.path });
+      expect(remaining.content[0]?.text).toContain('cells="1"');
+      expect(remaining.content[0]?.text).toContain('id="generated-1"');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookDelete fails on missing cell id", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      await expect(runNotebookDelete({ path: fixture.path, cellId: "missing" })).rejects.toThrow("Cell not found: missing");
     } finally {
       await fixture.cleanup();
     }

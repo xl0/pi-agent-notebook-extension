@@ -69,7 +69,7 @@
   - [x] Define/implement cell id normalization helpers
 - [~] Structural notebook operations
   - [x] Implement `notebook_insert`
-  - [ ] Implement `notebook_delete`
+  - [x] Implement `notebook_delete`
   - [ ] Implement `notebook_move`
   - [ ] Implement `notebook_merge`
   - [ ] Implement `notebook_clear_outputs`

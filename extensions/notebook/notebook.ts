@@ -327,3 +327,11 @@ export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cel
   if (notebook.nbformat_minor < 5) notebook.nbformat_minor = 5;
   return readAllCells(notebook)[insertIndex]!;
 }
+
+export function deleteCell(notebook: Notebook, cellId: string): NotebookReadCell {
+  ensureCellIds(notebook);
+  const index = findCellIndexById(notebook, cellId);
+  const deleted = readAllCells(notebook)[index]!;
+  notebook.cells.splice(index, 1);
+  return deleted;
+}
