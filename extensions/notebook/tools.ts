@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, moveCell, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -48,6 +48,12 @@ export const notebookMoveParams = Type.Object({
   index: Type.Integer({ description: "New absolute cell index." }),
 });
 
+export const notebookMergeParams = Type.Object({
+  path: Type.String({ description: "Path to an .ipynb notebook." }),
+  cellId: Type.String({ description: "Anchor cell id to keep." }),
+  direction: Type.Union([Type.Literal("up"), Type.Literal("down")], { description: "Adjacent merge direction." }),
+});
+
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>;
 export type NotebookReadParams = Static<typeof notebookReadParams>;
 export type NotebookWriteParams = Static<typeof notebookWriteParams>;
@@ -55,6 +61,7 @@ export type NotebookEditParams = Static<typeof notebookEditParams>;
 export type NotebookInsertParams = Static<typeof notebookInsertParams>;
 export type NotebookDeleteParams = Static<typeof notebookDeleteParams>;
 export type NotebookMoveParams = Static<typeof notebookMoveParams>;
+export type NotebookMergeParams = Static<typeof notebookMergeParams>;
 
 export interface NotebookToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -130,6 +137,16 @@ export async function runNotebookMove(params: NotebookMoveParams): Promise<Noteb
   };
 }
 
+export async function runNotebookMerge(params: NotebookMergeParams): Promise<NotebookToolResult> {
+  const notebook = await loadNotebook(params.path);
+  const result = mergeCell(notebook, params.cellId, params.direction);
+  await saveNotebook(params.path, notebook);
+  return {
+    content: [{ type: "text", text: `Merged cell ${result.removed.id} into ${params.cellId} in ${params.path}.` }],
+    details: result,
+  };
+}
+
 export const notebookToolRunners = {
   notebook_summary: runNotebookSummary,
   notebook_read: runNotebookRead,
@@ -138,6 +155,7 @@ export const notebookToolRunners = {
   notebook_insert: runNotebookInsert,
   notebook_delete: runNotebookDelete,
   notebook_move: runNotebookMove,
+  notebook_merge: runNotebookMerge,
 } as const;
 
 export type NotebookToolName = keyof typeof notebookToolRunners;

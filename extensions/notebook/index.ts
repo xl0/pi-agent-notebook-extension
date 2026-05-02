@@ -3,6 +3,7 @@ import {
   notebookDeleteParams,
   notebookEditParams,
   notebookInsertParams,
+  notebookMergeParams,
   notebookMoveParams,
   notebookReadParams,
   notebookSummaryParams,
@@ -10,6 +11,7 @@ import {
   runNotebookDelete,
   runNotebookEdit,
   runNotebookInsert,
+  runNotebookMerge,
   runNotebookMove,
   runNotebookRead,
   runNotebookSummary,
@@ -98,6 +100,18 @@ export default function notebookExtension(pi: ExtensionAPI) {
     parameters: notebookMoveParams,
     async execute(_toolCallId, params) {
       return runNotebookMove(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "notebook_merge",
+    label: "Notebook Merge",
+    description: "Merge one notebook cell with the adjacent cell above or below.",
+    promptSnippet: "Merge an anchor notebook cell with its adjacent neighbor of the same type.",
+    promptGuidelines: ["Use notebook_merge to combine adjacent same-type cells; the anchor cell id is preserved."],
+    parameters: notebookMergeParams,
+    async execute(_toolCallId, params) {
+      return runNotebookMerge(params);
     },
   });
 }

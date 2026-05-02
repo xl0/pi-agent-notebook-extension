@@ -37,7 +37,7 @@
 - Move/insert/merge semantics:
   - move: absolute final index placement
   - insert: anchor by `cellId` or `index`, plus `direction: before|after`
-  - merge: one anchor cell plus `direction: up|down` only
+  - merge: one anchor cell plus `direction: up|down`, keep the anchor id, require same cell type, and insert one boundary newline when needed
 - Images/attachments: ignore for now
 - Testing:
   - test notebook logic as pure TS functions with `bun test`
@@ -71,7 +71,7 @@
   - [x] Implement `notebook_insert`
   - [x] Implement `notebook_delete`
   - [x] Implement `notebook_move`
-  - [ ] Implement `notebook_merge`
+  - [x] Implement `notebook_merge`
   - [ ] Implement `notebook_clear_outputs`
   - [ ] Expand `notebook_read` to multi/range selectors
 - [~] Verification

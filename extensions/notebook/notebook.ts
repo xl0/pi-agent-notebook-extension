@@ -67,6 +67,11 @@ export interface NotebookInsertTarget {
   direction: "before" | "after";
 }
 
+export interface NotebookMergeResult {
+  merged: NotebookReadCell;
+  removed: NotebookReadCell;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -80,6 +85,12 @@ export function normalizeSource(source: NotebookCell["source"]): string {
 function previewSource(source: string): string {
   const escaped = source.replaceAll("\\", "\\\\").replaceAll("\n", "\\n");
   return escaped.length > 120 ? `${escaped.slice(0, 120)}...` : escaped;
+}
+
+function joinCellSources(a: string, b: string): string {
+  if (a.length === 0 || b.length === 0) return `${a}${b}`;
+  if (a.endsWith("\n") || b.startsWith("\n")) return `${a}${b}`;
+  return `${a}\n${b}`;
 }
 
 function quotePreview(text: string): string {
@@ -345,4 +356,40 @@ export function moveCell(notebook: Notebook, cellId: string, index: number): Not
   const [cell] = notebook.cells.splice(fromIndex, 1);
   notebook.cells.splice(index, 0, cell!);
   return readAllCells(notebook)[index]!;
+}
+
+export function mergeCell(notebook: Notebook, cellId: string, direction: "up" | "down"): NotebookMergeResult {
+  ensureCellIds(notebook);
+  const anchorIndex = findCellIndexById(notebook, cellId);
+  const otherIndex = anchorIndex + (direction === "up" ? -1 : 1);
+
+  if (otherIndex < 0 || otherIndex >= notebook.cells.length) {
+    throw new Error(`No cell to merge ${direction} from ${cellId}`);
+  }
+
+  const anchor = notebook.cells[anchorIndex]!;
+  const other = notebook.cells[otherIndex]!;
+  if (anchor.cell_type !== other.cell_type) {
+    throw new Error(`Cannot merge ${anchor.cell_type} cell with ${other.cell_type} cell`);
+  }
+
+  const source = direction === "up"
+    ? joinCellSources(normalizeSource(other.source), normalizeSource(anchor.source))
+    : joinCellSources(normalizeSource(anchor.source), normalizeSource(other.source));
+
+  notebook.cells[anchorIndex] = { ...anchor, source };
+  const removedIndex = otherIndex;
+  notebook.cells.splice(removedIndex, 1);
+  const mergedIndex = direction === "up" ? anchorIndex - 1 : anchorIndex;
+
+  return {
+    merged: readAllCells(notebook)[mergedIndex]!,
+    removed: {
+      index: otherIndex,
+      id: getCellId(other, otherIndex),
+      type: other.cell_type,
+      source: normalizeSource(other.source),
+      executionCount: other.cell_type === "code" ? (other.execution_count as number | null | undefined) ?? null : undefined,
+    },
+  };
 }

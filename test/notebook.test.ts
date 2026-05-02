@@ -11,6 +11,7 @@ import {
   ensureCellIds,
   formatNotebookRead,
   insertCell,
+  mergeCell,
   moveCell,
   formatNotebookSummary,
   loadNotebook,
@@ -22,7 +23,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookMove, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
+import { runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookMerge, runNotebookMove, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -194,6 +195,28 @@ describe("notebook core", () => {
     expect(moved.id).toBe("code-1");
     expect(readAllCells(notebook).map((cell) => cell.id)).toEqual(["code-1", "intro"]);
     expect(() => moveCell(notebook, "code-1", 99)).toThrow("Cell index out of range: 99");
+  });
+
+  test("mergeCell merges adjacent same-type cells and preserves the anchor id", () => {
+    const notebook = parseNotebook(JSON.stringify({
+      nbformat: 4,
+      nbformat_minor: 5,
+      cells: [
+        { cell_type: "markdown", id: "a", source: "one" },
+        { cell_type: "markdown", id: "b", source: "two\n" },
+      ],
+    }));
+    const result = mergeCell(notebook, "a", "down");
+    expect(result.merged.id).toBe("a");
+    expect(result.removed.id).toBe("b");
+    expect(result.merged.source).toBe("one\ntwo\n");
+    expect(notebook.cells).toHaveLength(1);
+  });
+
+  test("mergeCell rejects missing neighbors and mixed cell types", () => {
+    const notebook = parseNotebook(createNotebookText());
+    expect(() => mergeCell(notebook, "intro", "up")).toThrow("No cell to merge up from intro");
+    expect(() => mergeCell(notebook, "intro", "down")).toThrow("Cannot merge markdown cell with code cell");
   });
 
   test("formatNotebookSummary uses sparse key value rows", () => {
@@ -501,6 +524,44 @@ describe("notebook core", () => {
 
     try {
       await expect(runNotebookMove({ path: fixture.path, cellId: "95cca932", index: 99 })).rejects.toThrow("Cell index out of range: 99");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookMerge returns concise confirmation and merged source", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const result = await runNotebookMerge({ path: fixture.path, cellId: "ffd208cf", direction: "down" });
+      expect(result.content[0]?.text).toBe(`Merged cell 95cca932 into ffd208cf in ${fixture.path}.`);
+      const readResult = await runNotebookRead({ path: fixture.path, cellId: "ffd208cf" });
+      expect(readResult.content[0]?.text).toContain('torch.cuda.memory_allocated()\n# |eval: false');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookMerge works on synthetic ids", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      const result = await runNotebookMerge({ path: fixture.path, cellId: "generated-0", direction: "down" });
+      expect(result.content[0]?.text).toBe(`Merged cell generated-1 into generated-0 in ${fixture.path}.`);
+      const readResult = await runNotebookRead({ path: fixture.path, cellId: "generated-0" });
+      expect(readResult.content[0]?.text).toContain('# %matplotlib inline\n#!/usr/bin/env python3');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookMerge fails at notebook boundaries", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      await expect(runNotebookMerge({ path: fixture.path, cellId: "20735603", direction: "up" })).rejects.toThrow(
+        "No cell to merge up from 20735603",
+      );
     } finally {
       await fixture.cleanup();
     }
