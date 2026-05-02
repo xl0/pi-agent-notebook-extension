@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 export interface NotebookCell {
@@ -55,6 +56,17 @@ export interface NotebookSourceEdit {
   newText: string;
 }
 
+export interface NotebookInsertCell {
+  type: "code" | "markdown" | "raw";
+  source: string;
+}
+
+export interface NotebookInsertTarget {
+  cellId?: string;
+  index?: number;
+  direction: "before" | "after";
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -101,6 +113,13 @@ export function ensureCellIds(notebook: Notebook): Notebook {
   }
 
   return notebook;
+}
+
+function createCellId(notebook: Notebook): string {
+  const ids = new Set(notebook.cells.map((cell, index) => getCellId(cell, index)));
+  let id = randomUUID();
+  while (ids.has(id)) id = randomUUID();
+  return id;
 }
 
 export function parseNotebook(text: string): Notebook {
@@ -273,4 +292,38 @@ export function applyExactSourceEdits(source: string, edits: NotebookSourceEdit[
 export function editCellSource(notebook: Notebook, cellId: string, edits: NotebookSourceEdit[]): Notebook {
   const current = readCellById(notebook, cellId);
   return writeCellSource(notebook, cellId, applyExactSourceEdits(current.source, edits));
+}
+
+export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cell: NotebookInsertCell): NotebookReadCell {
+  ensureCellIds(notebook);
+
+  if ((target.cellId === undefined) === (target.index === undefined)) {
+    throw new Error("Provide exactly one of cellId or index");
+  }
+
+  const anchorIndex = target.cellId !== undefined
+    ? findCellIndexById(notebook, target.cellId)
+    : target.index!;
+
+  if (!Number.isInteger(anchorIndex) || anchorIndex < 0 || anchorIndex >= notebook.cells.length) {
+    throw new Error(`Cell index out of range: ${anchorIndex}`);
+  }
+
+  const insertIndex = anchorIndex + (target.direction === "after" ? 1 : 0);
+  const id = createCellId(notebook);
+  const nextCell: NotebookCell = {
+    cell_type: cell.type,
+    id,
+    metadata: {},
+    source: cell.source,
+  };
+
+  if (cell.type === "code") {
+    nextCell.execution_count = null;
+    nextCell.outputs = [];
+  }
+
+  notebook.cells.splice(insertIndex, 0, nextCell);
+  if (notebook.nbformat_minor < 5) notebook.nbformat_minor = 5;
+  return readAllCells(notebook)[insertIndex]!;
 }

@@ -18,6 +18,7 @@
   - default to `cellId`
   - allow index-based addressing where it helps insertion/placement
   - one-cell-at-a-time for write/edit/insert/delete/move/merge/clear_outputs
+  - `notebook_insert` supports exactly one anchor selector: `cellId` or `index`
 - Output policy:
   - preserve outputs by default
   - outputs only changed by explicit clear tool
@@ -66,8 +67,8 @@
   - [x] Implement `notebook_write`
   - [x] Implement `notebook_edit`
   - [x] Define/implement cell id normalization helpers
-- [ ] Structural notebook operations
-  - [ ] Implement `notebook_insert`
+- [~] Structural notebook operations
+  - [x] Implement `notebook_insert`
   - [ ] Implement `notebook_delete`
   - [ ] Implement `notebook_move`
   - [ ] Implement `notebook_merge`
@@ -76,5 +77,5 @@
 - [~] Verification
   - [x] Add tests for existing parse/read/write/edit operations
   - [x] Add real `.ipynb` fixture coverage for current behavior
-  - [ ] Add tests for remaining mutation operations
+  - [~] Add tests for remaining mutation operations
   - [~] Verify current tools on real notebooks through Pi

@@ -1,10 +1,12 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
   notebookEditParams,
+  notebookInsertParams,
   notebookReadParams,
   notebookSummaryParams,
   notebookWriteParams,
   runNotebookEdit,
+  runNotebookInsert,
   runNotebookRead,
   runNotebookSummary,
   runNotebookWrite,
@@ -56,6 +58,18 @@ export default function notebookExtension(pi: ExtensionAPI) {
     parameters: notebookEditParams,
     async execute(_toolCallId, params) {
       return runNotebookEdit(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "notebook_insert",
+    label: "Notebook Insert",
+    description: "Insert one notebook cell before or after an anchor cell.",
+    promptSnippet: "Insert a new code, markdown, or raw notebook cell near an existing anchor.",
+    promptGuidelines: ["Use notebook_insert to add one new cell before or after a specific cell id or index."],
+    parameters: notebookInsertParams,
+    async execute(_toolCallId, params) {
+      return runNotebookInsert(params);
     },
   });
 }

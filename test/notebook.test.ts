@@ -9,6 +9,7 @@ import {
   editCellSource,
   ensureCellIds,
   formatNotebookRead,
+  insertCell,
   formatNotebookSummary,
   loadNotebook,
   normalizeSource,
@@ -19,7 +20,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookEdit, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
+import { runNotebookEdit, runNotebookInsert, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -149,6 +150,30 @@ describe("notebook core", () => {
     editCellSource(notebook, "code-1", [{ oldText: "print(1)", newText: "print(10)" }]);
     expect(readCellById(notebook, "code-1").source).toBe("print(10)\nprint(2)\n");
     expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }]);
+  });
+
+  test("insertCell inserts a code cell after an anchor and initializes code fields", () => {
+    const notebook = parseNotebook(createNotebookText());
+    const inserted = insertCell(notebook, { cellId: "intro", direction: "after" }, { type: "code", source: "print(3)\n" });
+    expect(inserted.index).toBe(1);
+    expect(inserted.type).toBe("code");
+    expect(inserted.source).toBe("print(3)\n");
+    expect(inserted.id).toBeTruthy();
+    expect(notebook.cells[1]?.execution_count).toBeNull();
+    expect(notebook.cells[1]?.outputs).toEqual([]);
+  });
+
+  test("insertCell inserts by index and rejects invalid selectors", () => {
+    const notebook = parseNotebook(createNotebookText());
+    const inserted = insertCell(notebook, { index: 1, direction: "before" }, { type: "markdown", source: "note\n" });
+    expect(inserted.index).toBe(1);
+    expect(readAllCells(notebook)[1]?.source).toBe("note\n");
+    expect(() => insertCell(notebook, { cellId: "intro", index: 0, direction: "after" }, { type: "raw", source: "x" })).toThrow(
+      "Provide exactly one of cellId or index",
+    );
+    expect(() => insertCell(notebook, { index: 99, direction: "after" }, { type: "raw", source: "x" })).toThrow(
+      "Cell index out of range: 99",
+    );
   });
 
   test("formatNotebookSummary uses sparse key value rows", () => {
@@ -327,6 +352,63 @@ describe("notebook core", () => {
       await expect(runNotebookWrite({ path: fixture.path, cellId: "missing", source: "x" })).rejects.toThrow(
         "Cell not found: missing",
       );
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookInsert returns concise confirmation and inserts readable cell", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const result = await runNotebookInsert({
+        path: fixture.path,
+        cellId: "95cca932",
+        direction: "after",
+        type: "markdown",
+        source: "Inserted note\n",
+      });
+      const inserted = result.details as { id: string };
+      expect(result.content[0]?.text).toBe(`Inserted cell ${inserted.id} after 95cca932 in ${fixture.path}.`);
+
+      const readResult = await runNotebookRead({ path: fixture.path, cellId: inserted.id });
+      expect(readResult.content[0]?.text).toBe(`<cell index="5" id="${inserted.id}" type="md" lines="2" />\nInserted note\n`);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookInsert works by index on notebooks without ids", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      const result = await runNotebookInsert({
+        path: fixture.path,
+        index: 0,
+        direction: "after",
+        type: "code",
+        source: "print(123)\n",
+      });
+      const inserted = result.details as { id: string };
+      expect(result.content[0]?.text).toBe(`Inserted cell ${inserted.id} after index 0 in ${fixture.path}.`);
+      expect(readCellById(await loadNotebook(fixture.path), inserted.id).source).toBe("print(123)\n");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookInsert fails on ambiguous selector", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      await expect(runNotebookInsert({
+        path: fixture.path,
+        cellId: "95cca932",
+        index: 4,
+        direction: "after",
+        type: "markdown",
+        source: "x",
+      })).rejects.toThrow("Provide exactly one of cellId or index");
     } finally {
       await fixture.cleanup();
     }

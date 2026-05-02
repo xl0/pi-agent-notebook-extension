@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { editCellSource, formatNotebookRead, formatNotebookSummary, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -28,10 +28,20 @@ export const notebookEditParams = Type.Object({
   ),
 });
 
+export const notebookInsertParams = Type.Object({
+  path: Type.String({ description: "Path to an .ipynb notebook." }),
+  cellId: Type.Optional(Type.String({ description: "Anchor cell id." })),
+  index: Type.Optional(Type.Integer({ description: "Anchor cell index." })),
+  direction: Type.Union([Type.Literal("before"), Type.Literal("after")], { description: "Insert before or after the anchor." }),
+  type: Type.Union([Type.Literal("code"), Type.Literal("markdown"), Type.Literal("raw")], { description: "New cell type." }),
+  source: Type.String({ description: "Source for the new cell." }),
+});
+
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>;
 export type NotebookReadParams = Static<typeof notebookReadParams>;
 export type NotebookWriteParams = Static<typeof notebookWriteParams>;
 export type NotebookEditParams = Static<typeof notebookEditParams>;
+export type NotebookInsertParams = Static<typeof notebookInsertParams>;
 
 export interface NotebookToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -76,11 +86,23 @@ export async function runNotebookEdit(params: NotebookEditParams): Promise<Noteb
   };
 }
 
+export async function runNotebookInsert(params: NotebookInsertParams): Promise<NotebookToolResult> {
+  const notebook = await loadNotebook(params.path);
+  const result = insertCell(notebook, { cellId: params.cellId, index: params.index, direction: params.direction }, { type: params.type, source: params.source });
+  await saveNotebook(params.path, notebook);
+  const anchor = params.cellId ?? `index ${params.index}`;
+  return {
+    content: [{ type: "text", text: `Inserted cell ${result.id} ${params.direction} ${anchor} in ${params.path}.` }],
+    details: result,
+  };
+}
+
 export const notebookToolRunners = {
   notebook_summary: runNotebookSummary,
   notebook_read: runNotebookRead,
   notebook_write: runNotebookWrite,
   notebook_edit: runNotebookEdit,
+  notebook_insert: runNotebookInsert,
 } as const;
 
 export type NotebookToolName = keyof typeof notebookToolRunners;
