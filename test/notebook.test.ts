@@ -7,6 +7,7 @@ const FIXTURE_DIR = join(import.meta.dir, "fixtures");
 import {
   applyExactSourceEdits,
   editCellSource,
+  ensureCellIds,
   formatNotebookRead,
   formatNotebookSummary,
   loadNotebook,
@@ -18,7 +19,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
+import { runNotebookEdit, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -272,7 +273,7 @@ describe("notebook core", () => {
   test("runNotebookRead returns notebook wrapper for full read", async () => {
     const result = await runNotebookRead({ path: join(FIXTURE_DIR, "lovely-test-no-ids.ipynb") });
     expect(result.content[0]?.text).toContain('<notebook path=');
-    expect(result.content[0]?.text).toContain('<cell index="0" id="" type="code" lines="1" n_exec="1" />');
+    expect(result.content[0]?.text).toContain('<cell index="0" id="generated-0" type="code" lines="1" n_exec="1" />');
     expect(result.content[0]?.text).toContain('# %matplotlib inline');
   });
 
@@ -350,16 +351,58 @@ describe("notebook core", () => {
     }
   });
 
-  test("real fixture without ids can be summarized and read but not cell-addressed yet", async () => {
+  test("ensureCellIds assigns synthetic ids and bumps minor version", async () => {
+    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
+    ensureCellIds(notebook);
+
+    expect(notebook.nbformat_minor).toBe(5);
+    expect(notebook.cells[0]?.id).toBe("generated-0");
+    expect(notebook.cells[1]?.id).toBe("generated-1");
+  });
+
+  test("real fixture without ids exposes synthetic ids for summary and read", async () => {
     const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
     const summary = summarizeNotebook("lovely-test-no-ids.ipynb", notebook);
 
     expect(summary.nbformatMinor).toBe(2);
     expect(summary.cellCount).toBe(2);
-    expect(summary.cells.every((cell) => cell.id === null)).toBe(true);
-    expect(readAllCells(notebook)).toHaveLength(2);
+    expect(summary.cells.map((cell) => cell.id)).toEqual(["generated-0", "generated-1"]);
+    expect(readAllCells(notebook).map((cell) => cell.id)).toEqual(["generated-0", "generated-1"]);
+    expect(readCellById(notebook, "generated-0").source).toBe("# %matplotlib inline");
     expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing");
-    expect(() => writeCellSource(notebook, "missing", "x")).toThrow("Cell not found: missing");
+  });
+
+  test("runNotebookWrite persists synthetic ids and writes by generated id", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      await runNotebookWrite({ path: fixture.path, cellId: "generated-0", source: "# %matplotlib widget\n" });
+      const saved = await loadNotebook(fixture.path);
+      expect(saved.nbformat_minor).toBe(5);
+      expect(saved.cells[0]?.id).toBe("generated-0");
+      expect(saved.cells[1]?.id).toBe("generated-1");
+
+      const result = await runNotebookRead({ path: fixture.path, cellId: "generated-0" });
+      expect(result.content[0]?.text).toBe('<cell index="0" id="generated-0" type="code" lines="2" n_exec="1" />\n# %matplotlib widget\n');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookEdit works by generated id on notebooks without ids", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      const result = await runNotebookEdit({
+        path: fixture.path,
+        cellId: "generated-1",
+        edits: [{ oldText: "import numpy as np", newText: "import numpy as numpy" }],
+      });
+      expect(result.content[0]?.text).toBe(`Successfully replaced 1 block(s) in cell generated-1 of ${fixture.path}.`);
+      expect(readCellById(await loadNotebook(fixture.path), "generated-1").source).toContain("import numpy as numpy");
+    } finally {
+      await fixture.cleanup();
+    }
   });
 
   test("parseNotebook validates root and cells", () => {

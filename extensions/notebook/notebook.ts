@@ -40,7 +40,7 @@ export interface NotebookSummary {
 
 export interface NotebookReadCell {
   index: number;
-  id: string | null;
+  id: string;
   type: string;
   source: string;
   executionCount?: number | null;
@@ -77,6 +77,30 @@ function quotePreview(text: string): string {
 function sourceLineCount(source: string): number {
   if (source.length === 0) return 0;
   return source.split("\n").length;
+}
+
+function syntheticCellId(index: number): string {
+  return `generated-${index}`;
+}
+
+export function getCellId(cell: NotebookCell, index: number): string {
+  return typeof cell.id === "string" && cell.id.length > 0 ? cell.id : syntheticCellId(index);
+}
+
+export function ensureCellIds(notebook: Notebook): Notebook {
+  let changed = false;
+
+  for (const [index, cell] of notebook.cells.entries()) {
+    if (typeof cell.id === "string" && cell.id.length > 0) continue;
+    notebook.cells[index] = { ...cell, id: syntheticCellId(index) };
+    changed = true;
+  }
+
+  if (changed && notebook.nbformat_minor < 5) {
+    notebook.nbformat_minor = 5;
+  }
+
+  return notebook;
 }
 
 export function parseNotebook(text: string): Notebook {
@@ -117,7 +141,7 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
       const source = normalizeSource(cell.source);
       return {
         index,
-        id: typeof cell.id === "string" ? cell.id : null,
+        id: getCellId(cell, index),
         type: cell.cell_type,
         sourceLines: sourceLineCount(source),
         preview: previewSource(source),
@@ -181,7 +205,7 @@ export function formatNotebookRead(path: string, cells: NotebookReadCell | Noteb
 export function readAllCells(notebook: Notebook): NotebookReadCell[] {
   return notebook.cells.map((cell, index) => ({
     index,
-    id: typeof cell.id === "string" ? cell.id : null,
+    id: getCellId(cell, index),
     type: cell.cell_type,
     source: normalizeSource(cell.source),
     executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
@@ -189,7 +213,7 @@ export function readAllCells(notebook: Notebook): NotebookReadCell[] {
 }
 
 function findCellIndexById(notebook: Notebook, cellId: string): number {
-  const index = notebook.cells.findIndex((cell) => cell.id === cellId);
+  const index = notebook.cells.findIndex((cell, i) => getCellId(cell, i) === cellId);
   if (index === -1) throw new Error(`Cell not found: ${cellId}`);
   return index;
 }
@@ -199,7 +223,7 @@ export function readCellById(notebook: Notebook, cellId: string): NotebookReadCe
   const cell = notebook.cells[index]!;
   return {
     index,
-    id: typeof cell.id === "string" ? cell.id : null,
+    id: getCellId(cell, index),
     type: cell.cell_type,
     source: normalizeSource(cell.source),
     executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
@@ -207,6 +231,7 @@ export function readCellById(notebook: Notebook, cellId: string): NotebookReadCe
 }
 
 export function writeCellSource(notebook: Notebook, cellId: string, source: string): Notebook {
+  ensureCellIds(notebook);
   const index = findCellIndexById(notebook, cellId);
   notebook.cells[index] = {
     ...notebook.cells[index],

@@ -10,7 +10,8 @@
   - keep notebook operations in pure functions, extension glue thin
 - Format support:
   - support only `nbformat === 4`
-  - normalize to cell ids on write
+  - expose synthetic ids for missing-id cells as `generated-<index>`
+  - persist missing cell ids on first mutation
   - when needed, bump notebook minor to support cell ids (`4.5` semantics)
   - no support for older major notebook versions
 - Cell addressing:
@@ -64,7 +65,7 @@
   - [x] Implement load/save mutation path
   - [x] Implement `notebook_write`
   - [x] Implement `notebook_edit`
-  - [ ] Define/implement cell id normalization helpers
+  - [x] Define/implement cell id normalization helpers
 - [ ] Structural notebook operations
   - [ ] Implement `notebook_insert`
   - [ ] Implement `notebook_delete`
