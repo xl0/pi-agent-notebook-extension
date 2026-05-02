@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "test": "bun test",
-    "check": "bun test"
+    "check": "bun test",
+    "tool": "bun scripts/run-notebook-tool.ts"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",

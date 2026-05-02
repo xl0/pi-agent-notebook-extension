@@ -24,6 +24,9 @@
   - separate metadata tool later if needed; not folded into source write
 - Read policy:
   - concise summary tool
+  - summary output should show both `index` and `cellId`
+  - summary output should prefer sparse key=value rows over dense CSV
+  - summary preview should show escaped source snippets compactly, truncated with `...` when needed
   - read tool should grow to support one `cellId`, multiple `cellIds`, or a range
 - Move/insert/merge semantics:
   - move: absolute placement
@@ -33,6 +36,7 @@
 - Testing:
   - test notebook logic as pure TS functions with `bun test`
   - prefer a small set of real `.ipynb` fixtures for file-level behavior
+  - keep a lightweight local tool runner for fast raw-output checks without launching Pi
   - keep Pi integration thin, validate extension wiring separately via Pi/manual integration checks
 
 ## Plan
@@ -68,4 +72,4 @@
   - [x] Add tests for existing parse/read/write/edit operations
   - [x] Add real `.ipynb` fixture coverage for current behavior
   - [ ] Add tests for remaining mutation operations
-  - [ ] Verify on real notebooks through Pi
+  - [~] Verify current tools on real notebooks through Pi

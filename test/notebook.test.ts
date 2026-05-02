@@ -7,6 +7,7 @@ const FIXTURE_DIR = join(import.meta.dir, "fixtures");
 import {
   applyExactSourceEdits,
   editCellSource,
+  formatNotebookSummary,
   loadNotebook,
   normalizeSource,
   parseNotebook,
@@ -69,7 +70,7 @@ describe("notebook core", () => {
       id: "intro",
       type: "markdown",
       sourceLines: 3,
-      preview: "# Title More text",
+      preview: "# Title\\nMore text\\n",
       executionCount: undefined,
       outputCount: undefined,
     });
@@ -145,6 +146,39 @@ describe("notebook core", () => {
     editCellSource(notebook, "code-1", [{ oldText: "print(1)", newText: "print(10)" }]);
     expect(readCellById(notebook, "code-1").source).toBe("print(10)\nprint(2)\n");
     expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }]);
+  });
+
+  test("formatNotebookSummary uses sparse key value rows", () => {
+    const summary = summarizeNotebook("demo.ipynb", parseNotebook(createNotebookText()));
+    const formatted = formatNotebookSummary(summary);
+    expect(formatted).toContain("meta nbformat=4.5 kernel=python3 cells=2 language=python");
+    expect(formatted).toContain('0 id=intro type=md lines=3 preview="# Title\\nMore text\\n"');
+    expect(formatted).toContain('1 id=code-1 type=code lines=3 n_exec=7 outputs=1 preview="print(1)\\nprint(2)\\n"');
+  });
+
+  test("summary omits null execution counts from formatted rows", async () => {
+    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
+    const formatted = formatNotebookSummary(summarizeNotebook("lovely-history.ipynb", notebook));
+    expect(formatted).toContain("1 id=57d6942b type=code lines=3 outputs=0");
+    expect(formatted).not.toContain("exec=null");
+    expect(formatted).not.toContain("n_exec=null");
+  });
+
+  test("markdown preview collapses markdown line-continuation backslashes", async () => {
+    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
+    const formatted = formatNotebookSummary(summarizeNotebook("lovely-history.ipynb", notebook));
+    expect(formatted).toContain('preview="Above, I allocated a tensor');
+    expect(formatted).toContain('deleted it.\\nI did not use Lovely T');
+    expect(formatted).not.toContain('deleted it.\\\\nI did not use Lovely T');
+  });
+
+  test("summary preview truncates long source with ellipsis", () => {
+    const notebook = parseNotebook(JSON.stringify({
+      nbformat: 4,
+      nbformat_minor: 5,
+      cells: [{ cell_type: "markdown", id: "a", source: "x".repeat(130) }],
+    }));
+    expect(summarizeNotebook("long.ipynb", notebook).cells[0]?.preview).toBe(`${"x".repeat(120)}...`);
   });
 
   test("summary handles missing metadata and missing source", () => {

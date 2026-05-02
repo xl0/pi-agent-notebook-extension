@@ -61,8 +61,14 @@ export function normalizeSource(source: NotebookCell["source"]): string {
   return "";
 }
 
-function previewSource(source: string): string {
-  return source.replace(/\s+/g, " ").trim().slice(0, 120);
+function previewSource(source: string, cellType?: string): string {
+  const normalized = cellType === "markdown" ? source.replaceAll("\\\n", "\n") : source;
+  const escaped = normalized.replaceAll("\n", "\\n");
+  return escaped.length > 120 ? `${escaped.slice(0, 120)}...` : escaped;
+}
+
+function quotePreview(text: string): string {
+  return `"${text.replaceAll("\"", "\\\"")}"`;
 }
 
 function sourceLineCount(source: string): number {
@@ -111,12 +117,35 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
         id: typeof cell.id === "string" ? cell.id : null,
         type: cell.cell_type,
         sourceLines: sourceLineCount(source),
-        preview: previewSource(source),
+        preview: previewSource(source, cell.cell_type),
         executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
         outputCount: cell.cell_type === "code" ? Array.isArray(cell.outputs) ? cell.outputs.length : 0 : undefined,
       };
     }),
   };
+}
+
+export function formatNotebookSummary(summary: NotebookSummary): string {
+  const metadata = [`nbformat=${summary.nbformat}.${summary.nbformatMinor}`, `kernel=${summary.kernelName ?? "-"}`, `cells=${summary.cellCount}`];
+  if (summary.language) metadata.push(`language=${summary.language}`);
+
+  const lines = [
+    `meta ${metadata.join(" ")}`,
+    ...summary.cells.map((cell) => {
+      const parts = [
+        String(cell.index),
+        `id=${cell.id ?? ""}`,
+        `type=${cell.type === "markdown" ? "md" : cell.type}`,
+        `lines=${cell.sourceLines}`,
+      ];
+      if (cell.executionCount !== undefined && cell.executionCount !== null) parts.push(`n_exec=${cell.executionCount}`);
+      if (cell.outputCount !== undefined) parts.push(`outputs=${cell.outputCount}`);
+      parts.push(`preview=${quotePreview(cell.preview)}`);
+      return parts.join(" ");
+    }),
+  ];
+
+  return lines.join("\n");
 }
 
 export function readAllCells(notebook: Notebook): NotebookReadCell[] {
