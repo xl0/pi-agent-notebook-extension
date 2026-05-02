@@ -18,6 +18,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `notebook_delete({ path, cellId })`
   - `notebook_move({ path, cellId, index })`
   - `notebook_merge({ path, cellId, direction })`
+  - `notebook_clear_outputs({ path, cellId })`
 - Current notebook support:
   - parse notebook JSON directly
   - require `nbformat === 4`
@@ -36,6 +37,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - delete one cell by id with concise confirmation text
   - move one cell to an absolute index with concise confirmation text
   - merge one cell with the adjacent same-type cell above or below, preserving the anchor id and inserting one boundary newline when needed
+  - clear outputs from one code cell while preserving source and execution count
   - preserve other cell fields like outputs on source writes/edits
 - Tests: `test/notebook.test.ts` now covers parse/validation, summary/read/write/edit/insert behavior, write-read source parity, failure modes, load/save roundtrips, tool-output formatting, and real `.ipynb` fixture coverage.
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
@@ -49,7 +51,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 
 ## Gaps
 
-- No clear_outputs yet.
+- `notebook_read` still only supports `cellId` or full-read, not ranges/multi-select yet.
 - `notebook_read` only supports `cellId` or full-read, not ranges/multi-select yet.
 - Pi/manual verification done lightly for `notebook_summary`, `notebook_read`, and `notebook_edit` via `pi -p -e ./extensions/notebook/index.ts` on real fixtures.
 - Synthetic ids are currently index-derived (`generated-<index>`) until first mutation persists them.

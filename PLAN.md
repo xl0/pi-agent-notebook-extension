@@ -72,10 +72,10 @@
   - [x] Implement `notebook_delete`
   - [x] Implement `notebook_move`
   - [x] Implement `notebook_merge`
-  - [ ] Implement `notebook_clear_outputs`
+  - [x] Implement `notebook_clear_outputs`
   - [ ] Expand `notebook_read` to multi/range selectors
 - [~] Verification
   - [x] Add tests for existing parse/read/write/edit operations
   - [x] Add real `.ipynb` fixture coverage for current behavior
-  - [~] Add tests for remaining mutation operations
+  - [x] Add tests for remaining mutation operations
   - [~] Verify current tools on real notebooks through Pi

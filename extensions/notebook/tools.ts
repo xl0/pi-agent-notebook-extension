@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { clearCellOutputs, deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -54,6 +54,11 @@ export const notebookMergeParams = Type.Object({
   direction: Type.Union([Type.Literal("up"), Type.Literal("down")], { description: "Adjacent merge direction." }),
 });
 
+export const notebookClearOutputsParams = Type.Object({
+  path: Type.String({ description: "Path to an .ipynb notebook." }),
+  cellId: Type.String({ description: "Code cell id whose outputs should be cleared." }),
+});
+
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>;
 export type NotebookReadParams = Static<typeof notebookReadParams>;
 export type NotebookWriteParams = Static<typeof notebookWriteParams>;
@@ -62,6 +67,7 @@ export type NotebookInsertParams = Static<typeof notebookInsertParams>;
 export type NotebookDeleteParams = Static<typeof notebookDeleteParams>;
 export type NotebookMoveParams = Static<typeof notebookMoveParams>;
 export type NotebookMergeParams = Static<typeof notebookMergeParams>;
+export type NotebookClearOutputsParams = Static<typeof notebookClearOutputsParams>;
 
 export interface NotebookToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -147,6 +153,16 @@ export async function runNotebookMerge(params: NotebookMergeParams): Promise<Not
   };
 }
 
+export async function runNotebookClearOutputs(params: NotebookClearOutputsParams): Promise<NotebookToolResult> {
+  const notebook = await loadNotebook(params.path);
+  const result = clearCellOutputs(notebook, params.cellId);
+  await saveNotebook(params.path, notebook);
+  return {
+    content: [{ type: "text", text: `Cleared outputs for cell ${params.cellId} in ${params.path}.` }],
+    details: result,
+  };
+}
+
 export const notebookToolRunners = {
   notebook_summary: runNotebookSummary,
   notebook_read: runNotebookRead,
@@ -156,6 +172,7 @@ export const notebookToolRunners = {
   notebook_delete: runNotebookDelete,
   notebook_move: runNotebookMove,
   notebook_merge: runNotebookMerge,
+  notebook_clear_outputs: runNotebookClearOutputs,
 } as const;
 
 export type NotebookToolName = keyof typeof notebookToolRunners;

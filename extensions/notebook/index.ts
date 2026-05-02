@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import {
+  notebookClearOutputsParams,
   notebookDeleteParams,
   notebookEditParams,
   notebookInsertParams,
@@ -8,6 +9,7 @@ import {
   notebookReadParams,
   notebookSummaryParams,
   notebookWriteParams,
+  runNotebookClearOutputs,
   runNotebookDelete,
   runNotebookEdit,
   runNotebookInsert,
@@ -112,6 +114,18 @@ export default function notebookExtension(pi: ExtensionAPI) {
     parameters: notebookMergeParams,
     async execute(_toolCallId, params) {
       return runNotebookMerge(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "notebook_clear_outputs",
+    label: "Notebook Clear Outputs",
+    description: "Clear outputs from one code cell.",
+    promptSnippet: "Remove outputs from a single code cell while preserving source and execution count.",
+    promptGuidelines: ["Use notebook_clear_outputs when code cell outputs should be removed without touching source."],
+    parameters: notebookClearOutputsParams,
+    async execute(_toolCallId, params) {
+      return runNotebookClearOutputs(params);
     },
   });
 }

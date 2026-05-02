@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 const FIXTURE_DIR = join(import.meta.dir, "fixtures");
 import {
   applyExactSourceEdits,
+  clearCellOutputs,
   deleteCell,
   editCellSource,
   ensureCellIds,
@@ -23,7 +24,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookMerge, runNotebookMove, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
+import { runNotebookClearOutputs, runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookMerge, runNotebookMove, runNotebookRead, runNotebookSummary, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -217,6 +218,15 @@ describe("notebook core", () => {
     const notebook = parseNotebook(createNotebookText());
     expect(() => mergeCell(notebook, "intro", "up")).toThrow("No cell to merge up from intro");
     expect(() => mergeCell(notebook, "intro", "down")).toThrow("Cannot merge markdown cell with code cell");
+  });
+
+  test("clearCellOutputs clears code outputs and rejects non-code cells", () => {
+    const notebook = parseNotebook(createNotebookText());
+    const cleared = clearCellOutputs(notebook, "code-1");
+    expect(cleared.id).toBe("code-1");
+    expect(notebook.cells[1]?.outputs).toEqual([]);
+    expect(notebook.cells[1]?.execution_count).toBe(7);
+    expect(() => clearCellOutputs(notebook, "intro")).toThrow("Cell is not code: intro");
   });
 
   test("formatNotebookSummary uses sparse key value rows", () => {
@@ -562,6 +572,44 @@ describe("notebook core", () => {
       await expect(runNotebookMerge({ path: fixture.path, cellId: "20735603", direction: "up" })).rejects.toThrow(
         "No cell to merge up from 20735603",
       );
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookClearOutputs returns concise confirmation and clears outputs", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const result = await runNotebookClearOutputs({ path: fixture.path, cellId: "95cca932" });
+      expect(result.content[0]?.text).toBe(`Cleared outputs for cell 95cca932 in ${fixture.path}.`);
+      const summary = await runNotebookSummary({ path: fixture.path });
+      expect(summary.content[0]?.text).toContain('4 id=95cca932 type=code lines=3 outputs=0');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookClearOutputs works on synthetic ids and preserves execution count", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      const result = await runNotebookClearOutputs({ path: fixture.path, cellId: "generated-1" });
+      expect(result.content[0]?.text).toBe(`Cleared outputs for cell generated-1 in ${fixture.path}.`);
+      const readResult = await runNotebookRead({ path: fixture.path, cellId: "generated-1" });
+      expect(readResult.content[0]?.text).toContain('n_exec="2"');
+      const summary = await runNotebookSummary({ path: fixture.path });
+      expect(summary.content[0]?.text).toContain('1 id=generated-1 type=code lines=17 n_exec=2 outputs=0');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookClearOutputs fails on markdown cells", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      await expect(runNotebookClearOutputs({ path: fixture.path, cellId: "20735603" })).rejects.toThrow("Cell is not code: 20735603");
     } finally {
       await fixture.cleanup();
     }

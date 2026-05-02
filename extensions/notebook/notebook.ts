@@ -393,3 +393,12 @@ export function mergeCell(notebook: Notebook, cellId: string, direction: "up" | 
     },
   };
 }
+
+export function clearCellOutputs(notebook: Notebook, cellId: string): NotebookReadCell {
+  ensureCellIds(notebook);
+  const index = findCellIndexById(notebook, cellId);
+  const cell = notebook.cells[index]!;
+  if (cell.cell_type !== "code") throw new Error(`Cell is not code: ${cellId}`);
+  notebook.cells[index] = { ...cell, outputs: [] };
+  return readAllCells(notebook)[index]!;
+}
