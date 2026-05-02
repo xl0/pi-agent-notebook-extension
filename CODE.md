@@ -27,7 +27,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - write returns concise confirmation text; use read to verify exact source
   - apply exact, unique, non-overlapping source edits within one cell
   - preserve other cell fields like outputs on source writes/edits
-- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read/write/edit behavior, failure modes, load/save roundtrips, tool-output formatting, and real `.ipynb` fixture coverage.
+- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read/write/edit behavior, write-read source parity, failure modes, load/save roundtrips, tool-output formatting, and real `.ipynb` fixture coverage.
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 
 ## Decisions

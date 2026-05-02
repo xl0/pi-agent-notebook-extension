@@ -61,7 +61,7 @@ export async function runNotebookWrite(params: NotebookWriteParams): Promise<Not
   await saveNotebook(params.path, notebook);
   const result = readCellById(notebook, params.cellId);
   return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    content: [{ type: "text", text: `Wrote cell ${params.cellId} in ${params.path}.` }],
     details: result,
   };
 }

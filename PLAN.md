@@ -20,6 +20,7 @@
 - Output policy:
   - preserve outputs by default
   - outputs only changed by explicit clear tool
+  - write should confirm success concisely, not echo source back
 - Metadata:
   - separate metadata tool later if needed; not folded into source write
 - Read policy:
