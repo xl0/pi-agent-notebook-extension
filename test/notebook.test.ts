@@ -11,6 +11,7 @@ import {
   ensureCellIds,
   formatNotebookRead,
   insertCell,
+  moveCell,
   formatNotebookSummary,
   loadNotebook,
   normalizeSource,
@@ -21,7 +22,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
+import { runNotebookDelete, runNotebookEdit, runNotebookInsert, runNotebookMove, runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -184,6 +185,15 @@ describe("notebook core", () => {
     expect(deleted.source).toBe("print(1)\nprint(2)\n");
     expect(notebook.cells).toHaveLength(1);
     expect(() => readCellById(notebook, "code-1")).toThrow("Cell not found: code-1");
+  });
+
+  test("moveCell reorders one cell to an absolute index", () => {
+    const notebook = parseNotebook(createNotebookText());
+    const moved = moveCell(notebook, "code-1", 0);
+    expect(moved.index).toBe(0);
+    expect(moved.id).toBe("code-1");
+    expect(readAllCells(notebook).map((cell) => cell.id)).toEqual(["code-1", "intro"]);
+    expect(() => moveCell(notebook, "code-1", 99)).toThrow("Cell index out of range: 99");
   });
 
   test("formatNotebookSummary uses sparse key value rows", () => {
@@ -455,6 +465,42 @@ describe("notebook core", () => {
 
     try {
       await expect(runNotebookDelete({ path: fixture.path, cellId: "missing" })).rejects.toThrow("Cell not found: missing");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookMove returns concise confirmation and reorders cells", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const result = await runNotebookMove({ path: fixture.path, cellId: "95cca932", index: 1 });
+      expect(result.content[0]?.text).toBe(`Moved cell 95cca932 to index 1 in ${fixture.path}.`);
+      const summary = await runNotebookRead({ path: fixture.path });
+      expect(summary.content[0]?.text).toContain('<cell index="1" id="95cca932" type="code" lines="3" />');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookMove works on synthetic ids", async () => {
+    const fixture = await copyFixture("lovely-test-no-ids.ipynb");
+
+    try {
+      const result = await runNotebookMove({ path: fixture.path, cellId: "generated-1", index: 0 });
+      expect(result.content[0]?.text).toBe(`Moved cell generated-1 to index 0 in ${fixture.path}.`);
+      const readResult = await runNotebookRead({ path: fixture.path });
+      expect(readResult.content[0]?.text).toContain('<cell index="0" id="generated-1" type="code" lines="17" n_exec="2" />');
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookMove fails on invalid index", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      await expect(runNotebookMove({ path: fixture.path, cellId: "95cca932", index: 99 })).rejects.toThrow("Cell index out of range: 99");
     } finally {
       await fixture.cleanup();
     }

@@ -3,12 +3,14 @@ import {
   notebookDeleteParams,
   notebookEditParams,
   notebookInsertParams,
+  notebookMoveParams,
   notebookReadParams,
   notebookSummaryParams,
   notebookWriteParams,
   runNotebookDelete,
   runNotebookEdit,
   runNotebookInsert,
+  runNotebookMove,
   runNotebookRead,
   runNotebookSummary,
   runNotebookWrite,
@@ -84,6 +86,18 @@ export default function notebookExtension(pi: ExtensionAPI) {
     parameters: notebookDeleteParams,
     async execute(_toolCallId, params) {
       return runNotebookDelete(params);
+    },
+  });
+
+  pi.registerTool({
+    name: "notebook_move",
+    label: "Notebook Move",
+    description: "Move one notebook cell to an absolute index.",
+    promptSnippet: "Move a notebook cell to a new absolute index.",
+    promptGuidelines: ["Use notebook_move when one existing cell should be repositioned to a specific final index."],
+    parameters: notebookMoveParams,
+    async execute(_toolCallId, params) {
+      return runNotebookMove(params);
     },
   });
 }

@@ -335,3 +335,14 @@ export function deleteCell(notebook: Notebook, cellId: string): NotebookReadCell
   notebook.cells.splice(index, 1);
   return deleted;
 }
+
+export function moveCell(notebook: Notebook, cellId: string, index: number): NotebookReadCell {
+  ensureCellIds(notebook);
+  const fromIndex = findCellIndexById(notebook, cellId);
+  if (!Number.isInteger(index) || index < 0 || index >= notebook.cells.length) {
+    throw new Error(`Cell index out of range: ${index}`);
+  }
+  const [cell] = notebook.cells.splice(fromIndex, 1);
+  notebook.cells.splice(index, 0, cell!);
+  return readAllCells(notebook)[index]!;
+}

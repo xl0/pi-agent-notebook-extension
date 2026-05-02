@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, moveCell, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -42,12 +42,19 @@ export const notebookDeleteParams = Type.Object({
   cellId: Type.String({ description: "Cell id to delete." }),
 });
 
+export const notebookMoveParams = Type.Object({
+  path: Type.String({ description: "Path to an .ipynb notebook." }),
+  cellId: Type.String({ description: "Cell id to move." }),
+  index: Type.Integer({ description: "New absolute cell index." }),
+});
+
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>;
 export type NotebookReadParams = Static<typeof notebookReadParams>;
 export type NotebookWriteParams = Static<typeof notebookWriteParams>;
 export type NotebookEditParams = Static<typeof notebookEditParams>;
 export type NotebookInsertParams = Static<typeof notebookInsertParams>;
 export type NotebookDeleteParams = Static<typeof notebookDeleteParams>;
+export type NotebookMoveParams = Static<typeof notebookMoveParams>;
 
 export interface NotebookToolResult {
   content: Array<{ type: "text"; text: string }>;
@@ -113,6 +120,16 @@ export async function runNotebookDelete(params: NotebookDeleteParams): Promise<N
   };
 }
 
+export async function runNotebookMove(params: NotebookMoveParams): Promise<NotebookToolResult> {
+  const notebook = await loadNotebook(params.path);
+  const result = moveCell(notebook, params.cellId, params.index);
+  await saveNotebook(params.path, notebook);
+  return {
+    content: [{ type: "text", text: `Moved cell ${params.cellId} to index ${params.index} in ${params.path}.` }],
+    details: result,
+  };
+}
+
 export const notebookToolRunners = {
   notebook_summary: runNotebookSummary,
   notebook_read: runNotebookRead,
@@ -120,6 +137,7 @@ export const notebookToolRunners = {
   notebook_edit: runNotebookEdit,
   notebook_insert: runNotebookInsert,
   notebook_delete: runNotebookDelete,
+  notebook_move: runNotebookMove,
 } as const;
 
 export type NotebookToolName = keyof typeof notebookToolRunners;

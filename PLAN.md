@@ -35,7 +35,7 @@
   - read output should use XML-ish metadata headers plus raw source blocks
   - read tool should grow to support one `cellId`, multiple `cellIds`, or a range
 - Move/insert/merge semantics:
-  - move: absolute placement
+  - move: absolute final index placement
   - insert: anchor by `cellId` or `index`, plus `direction: before|after`
   - merge: one anchor cell plus `direction: up|down` only
 - Images/attachments: ignore for now
@@ -70,7 +70,7 @@
 - [~] Structural notebook operations
   - [x] Implement `notebook_insert`
   - [x] Implement `notebook_delete`
-  - [ ] Implement `notebook_move`
+  - [x] Implement `notebook_move`
   - [ ] Implement `notebook_merge`
   - [ ] Implement `notebook_clear_outputs`
   - [ ] Expand `notebook_read` to multi/range selectors
