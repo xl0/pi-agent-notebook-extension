@@ -11,7 +11,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Shared tool runners + schemas live in `extensions/notebook/tools.ts`.
 - Implemented tools:
   - `notebook_summary({ path })`
-  - `notebook_read({ path, cellId? })`
+  - `notebook_read({ path, cellId?, cellIds?, startIndex?, endIndex? })`
   - `notebook_write({ path, cellId, source })`
   - `notebook_edit({ path, cellId, edits })`
   - `notebook_insert({ path, cellId?|index?, direction, type, source })`
@@ -26,7 +26,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - human-facing summary output uses one `meta` line plus sparse per-cell key=value rows with both index and cell id
   - code rows include `n_exec` only when execution count is present
   - summary preview is first 120 source chars with escaped backslashes/newlines and `...` when truncated
-  - read all cells or one cell by id
+  - read all cells, one cell by id, multiple ids, or an inclusive index range
   - notebooks without ids expose synthetic `generated-*` ids in summary/read
   - read output uses XML-ish headers plus raw source blocks, not JSON-escaped source
   - replace full source of one cell
@@ -51,7 +51,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 
 ## Gaps
 
-- `notebook_read` still only supports `cellId` or full-read, not ranges/multi-select yet.
+- Current manual verification has been done via `bun run tool` on real fixtures across all implemented tools.
 - `notebook_read` only supports `cellId` or full-read, not ranges/multi-select yet.
 - Pi/manual verification done lightly for `notebook_summary`, `notebook_read`, and `notebook_edit` via `pi -p -e ./extensions/notebook/index.ts` on real fixtures.
 - Synthetic ids are currently index-derived (`generated-<index>`) until first mutation persists them.

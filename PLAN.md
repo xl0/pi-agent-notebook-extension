@@ -33,7 +33,7 @@
   - summary preview should show escaped source snippets compactly, truncated with `...` when needed
   - summary/read formatting must preserve literal notebook backslashes in source; summary previews should escape them explicitly
   - read output should use XML-ish metadata headers plus raw source blocks
-  - read tool should grow to support one `cellId`, multiple `cellIds`, or a range
+  - read supports full notebook, one `cellId`, multiple `cellIds`, or an inclusive `startIndex`/`endIndex` range
 - Move/insert/merge semantics:
   - move: absolute final index placement
   - insert: anchor by `cellId` or `index`, plus `direction: before|after`
@@ -67,15 +67,15 @@
   - [x] Implement `notebook_write`
   - [x] Implement `notebook_edit`
   - [x] Define/implement cell id normalization helpers
-- [~] Structural notebook operations
+- [x] Structural notebook operations
   - [x] Implement `notebook_insert`
   - [x] Implement `notebook_delete`
   - [x] Implement `notebook_move`
   - [x] Implement `notebook_merge`
   - [x] Implement `notebook_clear_outputs`
-  - [ ] Expand `notebook_read` to multi/range selectors
+  - [x] Expand `notebook_read` to multi/range selectors
 - [~] Verification
   - [x] Add tests for existing parse/read/write/edit operations
   - [x] Add real `.ipynb` fixture coverage for current behavior
   - [x] Add tests for remaining mutation operations
-  - [~] Verify current tools on real notebooks through Pi
+  - [~] Verify current tools on real notebooks through Pi / local runner

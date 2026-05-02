@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { clearCellOutputs, deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { clearCellOutputs, deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, readCellRange, readCellsById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -7,7 +7,10 @@ export const notebookSummaryParams = Type.Object({
 
 export const notebookReadParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.Optional(Type.String({ description: "Cell id to read. Omit to read all cells." })),
+  cellId: Type.Optional(Type.String({ description: "Single cell id to read." })),
+  cellIds: Type.Optional(Type.Array(Type.String({ description: "Cell id to read." }), { minItems: 1, description: "Multiple cell ids to read in the given order." })),
+  startIndex: Type.Optional(Type.Integer({ description: "Inclusive start index for a cell range read." })),
+  endIndex: Type.Optional(Type.Integer({ description: "Inclusive end index for a cell range read." })),
 });
 
 export const notebookWriteParams = Type.Object({
@@ -85,7 +88,24 @@ export async function runNotebookSummary(params: NotebookSummaryParams): Promise
 
 export async function runNotebookRead(params: NotebookReadParams): Promise<NotebookToolResult> {
   const notebook = await loadNotebook(params.path);
-  const result = params.cellId ? readCellById(notebook, params.cellId) : readAllCells(notebook);
+  const selectors = [
+    params.cellId !== undefined,
+    params.cellIds !== undefined,
+    params.startIndex !== undefined || params.endIndex !== undefined,
+  ].filter(Boolean).length;
+
+  if (selectors > 1) throw new Error("Provide at most one read selector: cellId, cellIds, or startIndex/endIndex");
+  if ((params.startIndex === undefined) !== (params.endIndex === undefined)) {
+    throw new Error("Provide both startIndex and endIndex for range reads");
+  }
+
+  const result = params.cellId !== undefined
+    ? readCellById(notebook, params.cellId)
+    : params.cellIds !== undefined
+      ? readCellsById(notebook, params.cellIds)
+      : params.startIndex !== undefined
+        ? readCellRange(notebook, params.startIndex, params.endIndex!)
+        : readAllCells(notebook);
   return {
     content: [{ type: "text", text: formatNotebookRead(params.path, result) }],
     details: result,

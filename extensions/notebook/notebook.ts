@@ -260,6 +260,21 @@ export function readCellById(notebook: Notebook, cellId: string): NotebookReadCe
   };
 }
 
+export function readCellsById(notebook: Notebook, cellIds: string[]): NotebookReadCell[] {
+  return cellIds.map((cellId) => readCellById(notebook, cellId));
+}
+
+export function readCellRange(notebook: Notebook, startIndex: number, endIndex: number): NotebookReadCell[] {
+  if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex)) {
+    throw new Error("Cell range indices must be integers");
+  }
+  if (startIndex < 0 || endIndex < 0 || startIndex >= notebook.cells.length || endIndex >= notebook.cells.length) {
+    throw new Error(`Cell range out of range: ${startIndex}..${endIndex}`);
+  }
+  if (startIndex > endIndex) throw new Error(`Invalid cell range: ${startIndex}..${endIndex}`);
+  return readAllCells(notebook).slice(startIndex, endIndex + 1);
+}
+
 export function writeCellSource(notebook: Notebook, cellId: string, source: string): Notebook {
   ensureCellIds(notebook);
   const index = findCellIndexById(notebook, cellId);

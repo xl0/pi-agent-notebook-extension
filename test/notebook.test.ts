@@ -16,6 +16,8 @@ import {
   moveCell,
   formatNotebookSummary,
   loadNotebook,
+  readCellRange,
+  readCellsById,
   normalizeSource,
   parseNotebook,
   readAllCells,
@@ -89,6 +91,8 @@ describe("notebook core", () => {
     const notebook = parseNotebook(createNotebookText());
     expect(readAllCells(notebook)).toHaveLength(2);
     expect(readCellById(notebook, "code-1").source).toBe("print(1)\nprint(2)\n");
+    expect(readCellsById(notebook, ["code-1", "intro"]).map((cell) => cell.id)).toEqual(["code-1", "intro"]);
+    expect(readCellRange(notebook, 0, 1).map((cell) => cell.id)).toEqual(["intro", "code-1"]);
   });
 
   test("normalizes string array source", () => {
@@ -353,6 +357,30 @@ describe("notebook core", () => {
     expect(result.content[0]?.text).toContain('<notebook path=');
     expect(result.content[0]?.text).toContain('<cell index="0" id="generated-0" type="code" lines="1" n_exec="1" />');
     expect(result.content[0]?.text).toContain('# %matplotlib inline');
+  });
+
+  test("runNotebookRead supports multiple ids and ranges", async () => {
+    const byIds = await runNotebookRead({ path: join(FIXTURE_DIR, "lovely-history.ipynb"), cellIds: ["95cca932", "9fd3e324"] });
+    expect(byIds.content[0]?.text).toContain('<notebook path="');
+    expect(byIds.content[0]?.text).toContain('<cell index="4" id="95cca932" type="code" lines="3" />');
+    expect(byIds.content[0]?.text).toContain('<cell index="7" id="9fd3e324" type="md" lines="5" />');
+
+    const byRange = await runNotebookRead({ path: join(FIXTURE_DIR, "lovely-history.ipynb"), startIndex: 3, endIndex: 4 });
+    expect(byRange.content[0]?.text).toContain('<cell index="3" id="ffd208cf" type="code" lines="2" />');
+    expect(byRange.content[0]?.text).toContain('<cell index="4" id="95cca932" type="code" lines="3" />');
+  });
+
+  test("runNotebookRead rejects conflicting or incomplete selectors", async () => {
+    await expect(runNotebookRead({
+      path: join(FIXTURE_DIR, "lovely-history.ipynb"),
+      cellId: "95cca932",
+      cellIds: ["9fd3e324"],
+    })).rejects.toThrow("Provide at most one read selector: cellId, cellIds, or startIndex/endIndex");
+
+    await expect(runNotebookRead({
+      path: join(FIXTURE_DIR, "lovely-history.ipynb"),
+      startIndex: 3,
+    })).rejects.toThrow("Provide both startIndex and endIndex for range reads");
   });
 
   test("runNotebookRead fails on missing cell id", async () => {
