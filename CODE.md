@@ -21,7 +21,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - replace full source of one cell
   - apply exact, unique, non-overlapping source edits within one cell
   - preserve other cell fields like outputs on source writes/edits
-- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read behavior, write/edit behavior, failure modes, and load/save roundtrips.
+- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read behavior, write/edit behavior, failure modes, load/save roundtrips, and real `.ipynb` fixture coverage.
 
 ## Decisions
 
@@ -36,3 +36,4 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - No cell id normalization/generation yet.
 - `notebook_read` only supports `cellId` or full-read, not ranges/multi-select yet.
 - No real Pi runtime/manual verification yet.
+- Real notebook fixtures now live in `test/fixtures/`.

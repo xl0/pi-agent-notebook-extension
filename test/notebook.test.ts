@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+const FIXTURE_DIR = join(import.meta.dir, "fixtures");
 import {
   applyExactSourceEdits,
   editCellSource,
@@ -14,6 +16,17 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
+
+async function copyFixture(name: string) {
+  const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
+  const path = join(dir, name);
+  await Bun.write(path, await readFile(join(FIXTURE_DIR, name)));
+  return {
+    dir,
+    path,
+    cleanup: () => rm(dir, { recursive: true, force: true }),
+  };
+}
 
 function createNotebookText() {
   return JSON.stringify({
@@ -189,6 +202,51 @@ describe("notebook core", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  test("loads real fixture with cell ids and mixed cell types", async () => {
+    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
+    const summary = summarizeNotebook("lovely-history.ipynb", notebook);
+
+    expect(summary.nbformatMinor).toBe(5);
+    expect(summary.cellCount).toBe(12);
+    expect(summary.kernelName).toBe("python3");
+    expect(summary.language).toBe(null);
+    expect(summary.cells[0]?.type).toBe("markdown");
+    expect(summary.cells[1]?.type).toBe("code");
+    expect(summary.cells[1]?.id).toBeTruthy();
+    expect(summary.cells.some((cell) => cell.outputCount === 1)).toBe(true);
+  });
+
+  test("reads and edits a real fixture cell while preserving outputs", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const notebook = await loadNotebook(fixture.path);
+      const target = readCellById(notebook, "95cca932");
+      expect(target.source).toContain('t = torch.tensor(10, device="cuda")');
+
+      editCellSource(notebook, "95cca932", [{ oldText: 'tensor(10, device="cuda")', newText: 'tensor(11, device="cuda")' }]);
+      await saveNotebook(fixture.path, notebook);
+
+      const updated = await loadNotebook(fixture.path);
+      expect(readCellById(updated, "95cca932").source).toContain('tensor(11, device="cuda")');
+      expect(updated.cells[4]?.outputs).toEqual(notebook.cells[4]?.outputs);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("real fixture without ids can be summarized and read but not cell-addressed yet", async () => {
+    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
+    const summary = summarizeNotebook("lovely-test-no-ids.ipynb", notebook);
+
+    expect(summary.nbformatMinor).toBe(2);
+    expect(summary.cellCount).toBe(2);
+    expect(summary.cells.every((cell) => cell.id === null)).toBe(true);
+    expect(readAllCells(notebook)).toHaveLength(2);
+    expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing");
+    expect(() => writeCellSource(notebook, "missing", "x")).toThrow("Cell not found: missing");
   });
 
   test("parseNotebook validates root and cells", () => {

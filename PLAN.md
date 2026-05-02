@@ -32,6 +32,7 @@
 - Images/attachments: ignore for now
 - Testing:
   - test notebook logic as pure TS functions with `bun test`
+  - prefer a small set of real `.ipynb` fixtures for file-level behavior
   - keep Pi integration thin, validate extension wiring separately via Pi/manual integration checks
 
 ## Plan
@@ -64,6 +65,7 @@
   - [ ] Implement `notebook_clear_outputs`
   - [ ] Expand `notebook_read` to multi/range selectors
 - [~] Verification
-  - [~] Add tests for existing parse/read/write/edit operations
+  - [x] Add tests for existing parse/read/write/edit operations
+  - [x] Add real `.ipynb` fixture coverage for current behavior
   - [ ] Add tests for remaining mutation operations
   - [ ] Verify on real notebooks through Pi
