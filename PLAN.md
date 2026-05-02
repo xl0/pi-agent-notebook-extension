@@ -63,6 +63,7 @@
   - [ ] Implement `notebook_merge`
   - [ ] Implement `notebook_clear_outputs`
   - [ ] Expand `notebook_read` to multi/range selectors
-- [ ] Verification
-  - [ ] Add tests for all mutation operations
+- [~] Verification
+  - [~] Add tests for existing parse/read/write/edit operations
+  - [ ] Add tests for remaining mutation operations
   - [ ] Verify on real notebooks through Pi

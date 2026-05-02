@@ -21,7 +21,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - replace full source of one cell
   - apply exact, unique, non-overlapping source edits within one cell
   - preserve other cell fields like outputs on source writes/edits
-- Tests: `test/notebook.test.ts` covers parse/summary/read/write/edit basics.
+- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read behavior, write/edit behavior, failure modes, and load/save roundtrips.
 
 ## Decisions
 
