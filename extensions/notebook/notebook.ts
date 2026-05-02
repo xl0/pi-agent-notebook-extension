@@ -46,6 +46,11 @@ export interface NotebookReadCell {
   executionCount?: number | null;
 }
 
+export interface NotebookSourceEdit {
+  oldText: string;
+  newText: string;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -124,9 +129,64 @@ export function readAllCells(notebook: Notebook): NotebookReadCell[] {
   }));
 }
 
+function findCellIndexById(notebook: Notebook, cellId: string): number {
+  const index = notebook.cells.findIndex((cell) => cell.id === cellId);
+  if (index === -1) throw new Error(`Cell not found: ${cellId}`);
+  return index;
+}
+
 export function readCellById(notebook: Notebook, cellId: string): NotebookReadCell {
-  const cells = readAllCells(notebook);
-  const cell = cells.find((entry) => entry.id === cellId);
-  if (!cell) throw new Error(`Cell not found: ${cellId}`);
-  return cell;
+  const index = findCellIndexById(notebook, cellId);
+  const cell = notebook.cells[index]!;
+  return {
+    index,
+    id: typeof cell.id === "string" ? cell.id : null,
+    type: cell.cell_type,
+    source: normalizeSource(cell.source),
+    executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
+  };
+}
+
+export function writeCellSource(notebook: Notebook, cellId: string, source: string): Notebook {
+  const index = findCellIndexById(notebook, cellId);
+  notebook.cells[index] = {
+    ...notebook.cells[index],
+    source,
+  };
+  return notebook;
+}
+
+function findUniqueMatch(haystack: string, needle: string): { start: number; end: number } {
+  const start = haystack.indexOf(needle);
+  if (start === -1) throw new Error(`Edit text not found: ${JSON.stringify(needle)}`);
+  if (haystack.indexOf(needle, start + 1) !== -1) {
+    throw new Error(`Edit text is ambiguous: ${JSON.stringify(needle)}`);
+  }
+  return { start, end: start + needle.length };
+}
+
+export function applyExactSourceEdits(source: string, edits: NotebookSourceEdit[]): string {
+  const matches = edits.map((edit) => ({ ...edit, ...findUniqueMatch(source, edit.oldText) }));
+  const sorted = [...matches].sort((a, b) => a.start - b.start);
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index]!.start < sorted[index - 1]!.end) {
+      throw new Error("Edit ranges overlap");
+    }
+  }
+
+  let cursor = 0;
+  let result = "";
+  for (const match of sorted) {
+    result += source.slice(cursor, match.start);
+    result += match.newText;
+    cursor = match.end;
+  }
+  result += source.slice(cursor);
+  return result;
+}
+
+export function editCellSource(notebook: Notebook, cellId: string, edits: NotebookSourceEdit[]): Notebook {
+  const current = readCellById(notebook, cellId);
+  return writeCellSource(notebook, cellId, applyExactSourceEdits(current.source, edits));
 }

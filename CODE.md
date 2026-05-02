@@ -11,23 +11,28 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Implemented tools:
   - `notebook_summary({ path })`
   - `notebook_read({ path, cellId? })`
+  - `notebook_write({ path, cellId, source })`
+  - `notebook_edit({ path, cellId, edits })`
 - Current notebook support:
   - parse notebook JSON directly
   - require `nbformat === 4`
   - summarize kernel/language/cells
   - read all cells or one cell by id
-- Tests: `test/notebook.test.ts` covers parse/summary/read basics.
+  - replace full source of one cell
+  - apply exact, unique, non-overlapping source edits within one cell
+  - preserve other cell fields like outputs on source writes/edits
+- Tests: `test/notebook.test.ts` covers parse/summary/read/write/edit basics.
 
 ## Decisions
 
 - Package form: root-level Pi package, not only project-local `.pi/extensions`.
 - Keep notebook operations in pure functions, extension glue thin.
-- Start with read-only tools first, then add mutation tools.
+- Start with small tool slices: read-only first, then mutation tools.
 - No extra runtime deps for notebook parsing; use built-in JSON handling.
 
 ## Gaps
 
-- No write/edit/insert/delete/move/merge/clear_outputs yet.
+- No insert/delete/move/merge/clear_outputs yet.
 - No cell id normalization/generation yet.
 - `notebook_read` only supports `cellId` or full-read, not ranges/multi-select yet.
 - No real Pi runtime/manual verification yet.

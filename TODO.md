@@ -16,9 +16,9 @@
 - [x] Implement `notebook_summary`
 - [x] Implement `notebook_read`
 - [ ] Define/implement cell id normalization helpers
-- [ ] Implement load/save mutation path
-- [ ] Implement `notebook_write`
-- [ ] Implement `notebook_edit`
+- [x] Implement load/save mutation path
+- [x] Implement `notebook_write`
+- [x] Implement `notebook_edit`
 - [ ] Implement `notebook_insert`
 - [ ] Implement `notebook_delete`
 - [ ] Implement `notebook_move`

@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { normalizeSource, parseNotebook, readAllCells, readCellById, summarizeNotebook } from "../extensions/notebook/notebook";
+import {
+  applyExactSourceEdits,
+  editCellSource,
+  normalizeSource,
+  parseNotebook,
+  readAllCells,
+  readCellById,
+  summarizeNotebook,
+  writeCellSource,
+} from "../extensions/notebook/notebook";
 
 const notebookText = JSON.stringify({
   nbformat: 4,
@@ -58,5 +67,33 @@ describe("notebook core", () => {
     expect(() => parseNotebook(JSON.stringify({ nbformat: 3, cells: [] }))).toThrow(
       "Only nbformat 4 notebooks are supported",
     );
+  });
+
+  test("writeCellSource replaces full source", () => {
+    const notebook = parseNotebook(notebookText);
+    writeCellSource(notebook, "code-1", "print(42)\n");
+    expect(readCellById(notebook, "code-1").source).toBe("print(42)\n");
+    expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }]);
+  });
+
+  test("applyExactSourceEdits applies non-overlapping exact edits", () => {
+    expect(
+      applyExactSourceEdits("alpha beta gamma", [
+        { oldText: "alpha", newText: "one" },
+        { oldText: "gamma", newText: "three" },
+      ]),
+    ).toBe("one beta three");
+  });
+
+  test("applyExactSourceEdits rejects ambiguous matches", () => {
+    expect(() => applyExactSourceEdits("x x", [{ oldText: "x", newText: "y" }])).toThrow(
+      'Edit text is ambiguous: "x"',
+    );
+  });
+
+  test("editCellSource updates one cell in place", () => {
+    const notebook = parseNotebook(notebookText);
+    editCellSource(notebook, "code-1", [{ oldText: "print(1)", newText: "print(10)" }]);
+    expect(readCellById(notebook, "code-1").source).toBe("print(10)\nprint(2)\n");
   });
 });
