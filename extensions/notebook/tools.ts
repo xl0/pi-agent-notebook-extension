@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { editCellSource, formatNotebookSummary, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { editCellSource, formatNotebookRead, formatNotebookSummary, loadNotebook, readAllCells, readCellById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -51,7 +51,7 @@ export async function runNotebookRead(params: NotebookReadParams): Promise<Noteb
   const notebook = await loadNotebook(params.path);
   const result = params.cellId ? readCellById(notebook, params.cellId) : readAllCells(notebook);
   return {
-    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+    content: [{ type: "text", text: formatNotebookRead(params.path, result) }],
     details: result,
   };
 }

@@ -46,6 +46,10 @@ export interface NotebookReadCell {
   executionCount?: number | null;
 }
 
+function quoteAttribute(text: string): string {
+  return `"${text.replaceAll("&", "&amp;").replaceAll("\"", "&quot;")}"`;
+}
+
 export interface NotebookSourceEdit {
   oldText: string;
   newText: string;
@@ -61,9 +65,8 @@ export function normalizeSource(source: NotebookCell["source"]): string {
   return "";
 }
 
-function previewSource(source: string, cellType?: string): string {
-  const normalized = cellType === "markdown" ? source.replaceAll("\\\n", "\n") : source;
-  const escaped = normalized.replaceAll("\n", "\\n");
+function previewSource(source: string): string {
+  const escaped = source.replaceAll("\\", "\\\\").replaceAll("\n", "\\n");
   return escaped.length > 120 ? `${escaped.slice(0, 120)}...` : escaped;
 }
 
@@ -117,7 +120,7 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
         id: typeof cell.id === "string" ? cell.id : null,
         type: cell.cell_type,
         sourceLines: sourceLineCount(source),
-        preview: previewSource(source, cell.cell_type),
+        preview: previewSource(source),
         executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
         outputCount: cell.cell_type === "code" ? Array.isArray(cell.outputs) ? cell.outputs.length : 0 : undefined,
       };
@@ -144,6 +147,33 @@ export function formatNotebookSummary(summary: NotebookSummary): string {
       return parts.join(" ");
     }),
   ];
+
+  return lines.join("\n");
+}
+
+export function formatNotebookRead(path: string, cells: NotebookReadCell | NotebookReadCell[]): string {
+  const list = Array.isArray(cells) ? cells : [cells];
+  const lines: string[] = [];
+
+  if (Array.isArray(cells)) {
+    lines.push(`<notebook path=${quoteAttribute(path)} cells=${quoteAttribute(String(list.length))} />`);
+    lines.push("");
+  }
+
+  for (const [index, cell] of list.entries()) {
+    const attrs = [
+      `index=${quoteAttribute(String(cell.index))}`,
+      `id=${quoteAttribute(cell.id ?? "")}`,
+      `type=${quoteAttribute(cell.type === "markdown" ? "md" : cell.type)}`,
+      `lines=${quoteAttribute(String(sourceLineCount(cell.source)))}`,
+    ];
+    if (cell.executionCount !== undefined && cell.executionCount !== null) {
+      attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`);
+    }
+    lines.push(`<cell ${attrs.join(" ")} />`);
+    lines.push(cell.source);
+    if (index < list.length - 1) lines.push("");
+  }
 
   return lines.join("\n");
 }

@@ -7,6 +7,7 @@ const FIXTURE_DIR = join(import.meta.dir, "fixtures");
 import {
   applyExactSourceEdits,
   editCellSource,
+  formatNotebookRead,
   formatNotebookSummary,
   loadNotebook,
   normalizeSource,
@@ -17,6 +18,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
+import { runNotebookRead } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -164,12 +166,12 @@ describe("notebook core", () => {
     expect(formatted).not.toContain("n_exec=null");
   });
 
-  test("markdown preview collapses markdown line-continuation backslashes", async () => {
+  test("markdown preview escapes literal trailing backslashes and newlines", async () => {
     const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
-    const formatted = formatNotebookSummary(summarizeNotebook("lovely-history.ipynb", notebook));
-    expect(formatted).toContain('preview="Above, I allocated a tensor');
-    expect(formatted).toContain('deleted it.\\nI did not use Lovely T');
-    expect(formatted).not.toContain('deleted it.\\\\nI did not use Lovely T');
+    const summary = summarizeNotebook("lovely-history.ipynb", notebook);
+    const preview = summary.cells[7]?.preview ?? "";
+    const start = preview.indexOf("deleted it.");
+    expect(preview.slice(start, start + 15)).toBe("deleted it.\\\\\\n");
   });
 
   test("summary preview truncates long source with ellipsis", () => {
@@ -250,6 +252,34 @@ describe("notebook core", () => {
     expect(summary.cells[1]?.type).toBe("code");
     expect(summary.cells[1]?.id).toBeTruthy();
     expect(summary.cells.some((cell) => cell.outputCount === 1)).toBe(true);
+  });
+
+  test("formatNotebookRead emits notebook header and raw cell blocks", async () => {
+    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
+    const formatted = formatNotebookRead("lovely-history.ipynb", readAllCells(notebook));
+    expect(formatted).toContain('<notebook path="lovely-history.ipynb" cells="12" />');
+    expect(formatted).toContain('<cell index="4" id="95cca932" type="code" lines="3" />');
+    expect(formatted).toContain('t = torch.tensor(10, device="cuda")');
+    expect(formatted).toContain('deleted it.\\\nI did not use Lovely Tensors');
+  });
+
+  test("runNotebookRead returns raw single-cell source block", async () => {
+    const result = await runNotebookRead({ path: join(FIXTURE_DIR, "lovely-history.ipynb"), cellId: "95cca932" });
+    expect(result.content[0]?.text).toContain('<cell index="4" id="95cca932" type="code" lines="3" />');
+    expect(result.content[0]?.text).toContain('# |eval: false\nt = torch.tensor(10, device="cuda")\nt');
+  });
+
+  test("runNotebookRead returns notebook wrapper for full read", async () => {
+    const result = await runNotebookRead({ path: join(FIXTURE_DIR, "lovely-test-no-ids.ipynb") });
+    expect(result.content[0]?.text).toContain('<notebook path=');
+    expect(result.content[0]?.text).toContain('<cell index="0" id="" type="code" lines="1" n_exec="1" />');
+    expect(result.content[0]?.text).toContain('# %matplotlib inline');
+  });
+
+  test("runNotebookRead fails on missing cell id", async () => {
+    await expect(runNotebookRead({ path: join(FIXTURE_DIR, "lovely-history.ipynb"), cellId: "missing" })).rejects.toThrow(
+      "Cell not found: missing",
+    );
   });
 
   test("reads and edits a real fixture cell while preserving outputs", async () => {

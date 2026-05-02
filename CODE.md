@@ -20,12 +20,13 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - summarize kernel/language/cells
   - human-facing summary output uses one `meta` line plus sparse per-cell key=value rows with both index and cell id
   - code rows include `n_exec` only when execution count is present
-  - summary preview is first 120 source chars with `\n` escapes and `...` when truncated
+  - summary preview is first 120 source chars with escaped backslashes/newlines and `...` when truncated
   - read all cells or one cell by id
+  - read output uses XML-ish headers plus raw source blocks, not JSON-escaped source
   - replace full source of one cell
   - apply exact, unique, non-overlapping source edits within one cell
   - preserve other cell fields like outputs on source writes/edits
-- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read behavior, write/edit behavior, failure modes, load/save roundtrips, and real `.ipynb` fixture coverage.
+- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read behavior, write/edit behavior, failure modes, load/save roundtrips, tool-output formatting, and real `.ipynb` fixture coverage.
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 
 ## Decisions

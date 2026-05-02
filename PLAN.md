@@ -27,6 +27,8 @@
   - summary output should show both `index` and `cellId`
   - summary output should prefer sparse key=value rows over dense CSV
   - summary preview should show escaped source snippets compactly, truncated with `...` when needed
+  - summary/read formatting must preserve literal notebook backslashes in source; summary previews should escape them explicitly
+  - read output should use XML-ish metadata headers plus raw source blocks
   - read tool should grow to support one `cellId`, multiple `cellIds`, or a range
 - Move/insert/merge semantics:
   - move: absolute placement
