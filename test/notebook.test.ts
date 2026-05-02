@@ -18,7 +18,7 @@ import {
   summarizeNotebook,
   writeCellSource,
 } from "../extensions/notebook/notebook";
-import { runNotebookRead } from "../extensions/notebook/tools";
+import { runNotebookRead, runNotebookWrite } from "../extensions/notebook/tools";
 
 async function copyFixture(name: string) {
   const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
@@ -280,6 +280,55 @@ describe("notebook core", () => {
     await expect(runNotebookRead({ path: join(FIXTURE_DIR, "lovely-history.ipynb"), cellId: "missing" })).rejects.toThrow(
       "Cell not found: missing",
     );
+  });
+
+  test("runNotebookWrite returns concise confirmation", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const result = await runNotebookWrite({ path: fixture.path, cellId: "95cca932", source: "x\n" });
+      expect(result.content[0]?.text).toBe(`Wrote cell 95cca932 in ${fixture.path}.`);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookWrite followed by runNotebookRead preserves exact code source", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const source = '# |eval: false\nt = torch.tensor(42, device="cuda")\nt\n';
+      await runNotebookWrite({ path: fixture.path, cellId: "95cca932", source });
+      const result = await runNotebookRead({ path: fixture.path, cellId: "95cca932" });
+      expect(result.content[0]?.text).toBe(`<cell index="4" id="95cca932" type="code" lines="4" />\n${source}`);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookWrite followed by runNotebookRead preserves exact markdown source", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      const source = "line 1\\\nline 2\n\n> quote\n";
+      await runNotebookWrite({ path: fixture.path, cellId: "9fd3e324", source });
+      const result = await runNotebookRead({ path: fixture.path, cellId: "9fd3e324" });
+      expect(result.content[0]?.text).toBe(`<cell index="7" id="9fd3e324" type="md" lines="5" />\n${source}`);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("runNotebookWrite fails on missing cell id", async () => {
+    const fixture = await copyFixture("lovely-history.ipynb");
+
+    try {
+      await expect(runNotebookWrite({ path: fixture.path, cellId: "missing", source: "x" })).rejects.toThrow(
+        "Cell not found: missing",
+      );
+    } finally {
+      await fixture.cleanup();
+    }
   });
 
   test("reads and edits a real fixture cell while preserving outputs", async () => {
