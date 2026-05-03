@@ -82,4 +82,5 @@
   - [x] Add tests for existing parse/read/write/edit operations
   - [x] Add real `.ipynb` fixture coverage for current behavior
   - [x] Add tests for remaining mutation operations
+  - [x] Split tests by layer/tool/workflow for maintainability
   - [~] Verify current tools on real notebooks through Pi / local runner

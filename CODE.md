@@ -35,7 +35,10 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - merge one cell with the adjacent same-type cell `above` or `below`, preserving the anchor id and inserting one boundary newline when needed
   - clear outputs from one code cell while preserving source and execution count
   - save path rewrites notebook JSON in Jupyter-style formatting: source as `string[]`, 1-space JSON indentation, trailing newline
-- Tests: `test/notebook.test.ts` covers parse/validation, summary/read/write/edit/insert/delete/move/merge/clear_outputs behavior, id-assignment behavior, selector errors, write-read source parity, load/save roundtrips, save formatting, and real `.ipynb` fixture coverage.
+- Tests split by layer:
+  - `test/notebook-core.test.ts` covers parse/validation, pure cell ops, formatting helpers, id assignment, load/save roundtrips, save formatting, and fixture-level core behavior
+  - `test/notebook-*.tool.test.ts` keeps one file per tool for runner/output/selector behavior
+  - `test/notebook-*.workflow.test.ts` keeps one file per multi-step workflow (write→read parity, no-id mutation flow, real-fixture edit/save)
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 
 ## Decisions
