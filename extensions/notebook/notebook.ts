@@ -11,10 +11,22 @@ export interface NotebookCell {
 	[key: string]: unknown
 }
 
+export interface NotebookMetadata {
+	kernelspec?: {
+		name?: string
+		[key: string]: unknown
+	}
+	language_info?: {
+		name?: string
+		[key: string]: unknown
+	}
+	[key: string]: unknown
+}
+
 export interface Notebook {
 	nbformat: number
 	nbformat_minor: number
-	metadata?: Record<string, unknown>
+	metadata?: NotebookMetadata
 	cells: NotebookCell[]
 	[key: string]: unknown
 }
@@ -77,7 +89,18 @@ export interface NotebookMergeResult {
 	removed: NotebookReadCell
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
+type RawObject = Record<string, unknown>
+
+type RawNotebook = RawObject & {
+	nbformat?: unknown
+	cells?: unknown
+}
+
+type RawCell = RawObject & {
+	cell_type?: unknown
+}
+
+function isObject(value: unknown): value is RawObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
 }
 
@@ -174,15 +197,16 @@ export function ensureCellIds(notebook: Notebook): PersistedCellId[] {
 export function parseNotebook(text: string): Notebook {
 	const data: unknown = JSON.parse(text)
 	if (!isObject(data)) throw new Error("Notebook root must be an object")
-	if (data["nbformat"] !== 4) throw new Error("Only nbformat 4 notebooks are supported")
-	if (!Array.isArray(data["cells"])) throw new Error("Notebook cells must be an array")
+	const notebook = data as RawNotebook
+	if (notebook.nbformat !== 4) throw new Error("Only nbformat 4 notebooks are supported")
+	if (!Array.isArray(notebook.cells)) throw new Error("Notebook cells must be an array")
 
-	for (const [index, cell] of data["cells"].entries()) {
+	for (const [index, cell] of notebook.cells.entries()) {
 		if (!isObject(cell)) throw new Error(`Cell ${index} must be an object`)
-		if (typeof cell["cell_type"] !== "string") throw new Error(`Cell ${index} is missing cell_type`)
+		if (typeof (cell as RawCell).cell_type !== "string") throw new Error(`Cell ${index} is missing cell_type`)
 	}
 
-	return data as Notebook
+	return notebook as Notebook
 }
 
 export async function loadNotebook(path: string): Promise<Notebook> {
@@ -197,16 +221,16 @@ export async function saveNotebook(path: string, notebook: Notebook): Promise<vo
 }
 
 export function summarizeNotebook(path: string, notebook: Notebook): NotebookSummary {
-	const metadata = isObject(notebook.metadata) ? notebook.metadata : {}
-	const kernelspec = isObject(metadata["kernelspec"]) ? metadata["kernelspec"] : {}
-	const languageInfo = isObject(metadata["language_info"]) ? metadata["language_info"] : {}
+	const metadata = notebook.metadata ?? {}
+	const kernelspec = metadata.kernelspec ?? {}
+	const languageInfo = metadata.language_info ?? {}
 
 	return {
 		path,
 		nbformat: notebook.nbformat,
 		nbformatMinor: notebook.nbformat_minor,
-		kernelName: typeof kernelspec["name"] === "string" ? kernelspec["name"] : null,
-		language: typeof languageInfo["name"] === "string" ? languageInfo["name"] : null,
+		kernelName: typeof kernelspec.name === "string" ? kernelspec.name : null,
+		language: typeof languageInfo.name === "string" ? languageInfo.name : null,
 		cellCount: notebook.cells.length,
 		cells: notebook.cells.map((cell, index) => {
 			const source = normalizeSource(cell.source)

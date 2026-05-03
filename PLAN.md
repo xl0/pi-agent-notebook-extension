@@ -66,6 +66,7 @@
   - [x] Add `typecheck` and make `check` run typecheck + Biome
   - [x] Install `bun-types` and wire TS to use it directly
   - [x] Tighten TS config with stricter checking flags and fix resulting type issues
+  - [x] Migrate Biome config and clear current lint warnings
   - [ ] Refresh lockfile / verify CLI once Bun tempdir issue is gone
 - [x] Package scaffold
   - [x] Turn repo root into a Pi package

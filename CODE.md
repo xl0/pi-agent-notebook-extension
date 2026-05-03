@@ -41,6 +41,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `test/notebook-*.workflow.test.ts` keeps one file per multi-step workflow (write→read parity, no-id mutation flow, real-fixture edit/save)
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 - Biome config lives in `biome.json`.
+  - schema migrated to match installed CLI `2.4.14`
   - formatter enabled with `lineWidth: 140`, LF endings, tabs, no trailing commas, semicolons `asNeeded`, arrow parens `asNeeded`
   - linter enabled with recommended rules
   - excludes `.ipynb`, `node_modules`, `.git`, and `bun.lock`
@@ -60,6 +61,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Pi/manual verification is still light; most verification so far is tests plus local `bun run tool` smoke runs on real fixtures.
 - `check` now runs type-checking plus Biome (`bun run typecheck && bun run biome:check`).
 - `bun-types` is now installed and type-checking uses it directly.
+- Notebook parse/summary/mutation code now satisfies stricter TS + current Biome without non-null assertions.
 - Validation errors from Pi surface raw schema-validator messages instead of friendly allowed-value hints.
 - Save/mutation path still normalizes notebook JSON shape/format on write, even though it now aims to match common Jupyter formatting.
 - Mutation tools on no-id notebooks now rely on index selectors until ids are persisted; read-only id-based addressing is intentionally unavailable in that state.
