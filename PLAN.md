@@ -3,6 +3,9 @@
 ## Decisions
 
 - Package form: root-level Pi package, not only project-local `.pi/extensions`.
+- Use Biome for formatting + linting.
+  - formatter prefs: 140 cols, tabs, no trailing commas, compress JS/TS output via `semicolons: asNeeded` and `arrowParentheses: asNeeded`
+  - exclude raw `.ipynb` files from Biome; notebook JSON formatting stays owned by notebook save logic
 - Scope: edit existing `.ipynb` files only. No notebook execution. No custom TUI/UI.
 - Discovery: no notebook listing tool. Use normal file tools / shell for finding notebooks.
 - Backend: TypeScript, parse notebook JSON directly.
@@ -58,6 +61,10 @@
 
 ## Todo
 
+- [ ] Tooling
+  - [x] Add Biome config + package scripts
+  - [x] Add `typecheck` and make `check` run typecheck + Biome
+  - [ ] Refresh lockfile / verify CLI once Bun tempdir issue is gone
 - [x] Package scaffold
   - [x] Turn repo root into a Pi package
   - [x] Add extension entry under `extensions/notebook/`

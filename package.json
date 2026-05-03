@@ -1,19 +1,33 @@
 {
-  "name": "pi-agent-notebook-extension",
-  "version": "0.1.0",
-  "private": true,
-  "keywords": ["pi-package"],
-  "type": "module",
-  "scripts": {
-    "test": "bun test",
-    "check": "bun test",
-    "tool": "bun scripts/run-notebook-tool.ts"
-  },
-  "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
-    "typebox": "*"
-  },
-  "pi": {
-    "extensions": ["./extensions"]
-  }
+	"name": "pi-agent-notebook-extension",
+	"version": "0.1.0",
+	"private": true,
+	"keywords": [
+		"pi-package"
+	],
+	"type": "module",
+	"scripts": {
+		"test": "bun test",
+		"typecheck": "tsgo --noEmit",
+		"check": "bun run typecheck && bun run biome:check",
+		"lint": "biome lint .",
+		"format": "biome format --write .",
+		"format:check": "biome format .",
+		"biome:check": "biome check .",
+		"tool": "bun scripts/run-notebook-tool.ts"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@typescript/native-preview": "^7.0.0-dev.20260502.1",
+		"typescript": "^6.0.3"
+	},
+	"peerDependencies": {
+		"@mariozechner/pi-coding-agent": "*",
+		"typebox": "*"
+	},
+	"pi": {
+		"extensions": [
+			"./extensions"
+		]
+	}
 }

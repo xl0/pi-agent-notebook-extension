@@ -1,341 +1,334 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { describe, expect, test } from "bun:test"
+import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
-  applyExactSourceEdits,
-  clearCellOutputs,
-  deleteCell,
-  editCellSource,
-  ensureCellIds,
-  formatNotebookRead,
-  formatNotebookSummary,
-  insertCell,
-  loadNotebook,
-  mergeCell,
-  moveCell,
-  normalizeSource,
-  parseNotebook,
-  readAllCells,
-  readCellById,
-  readCellRange,
-  readCellsById,
-  saveNotebook,
-  summarizeNotebook,
-  writeCellSource,
-} from "../extensions/notebook/notebook";
-import { createNotebookText, FIXTURE_DIR } from "./helpers";
+	applyExactSourceEdits,
+	clearCellOutputs,
+	deleteCell,
+	editCellSource,
+	ensureCellIds,
+	formatNotebookRead,
+	formatNotebookSummary,
+	insertCell,
+	loadNotebook,
+	mergeCell,
+	moveCell,
+	normalizeSource,
+	parseNotebook,
+	readAllCells,
+	readCellById,
+	readCellRange,
+	readCellsById,
+	saveNotebook,
+	summarizeNotebook,
+	writeCellSource
+} from "../extensions/notebook/notebook"
+import { createNotebookText, FIXTURE_DIR } from "./helpers"
 
 describe("notebook core", () => {
-  test("parse + summary", () => {
-    const notebook = parseNotebook(createNotebookText());
-    const summary = summarizeNotebook("demo.ipynb", notebook);
+	test("parse + summary", () => {
+		const notebook = parseNotebook(createNotebookText())
+		const summary = summarizeNotebook("demo.ipynb", notebook)
 
-    expect(summary.cellCount).toBe(2);
-    expect(summary.kernelName).toBe("python3");
-    expect(summary.language).toBe("python");
-    expect(summary.cells[0]).toEqual({
-      index: 0,
-      id: "intro",
-      type: "markdown",
-      sourceLines: 3,
-      preview: "# Title\\nMore text\\n",
-      executionCount: undefined,
-      outputCount: undefined,
-    });
-    expect(summary.cells[1]?.outputCount).toBe(1);
-  });
+		expect(summary.cellCount).toBe(2)
+		expect(summary.kernelName).toBe("python3")
+		expect(summary.language).toBe("python")
+		expect(summary.cells[0]).toEqual({
+			index: 0,
+			id: "intro",
+			type: "markdown",
+			sourceLines: 3,
+			preview: "# Title\\nMore text\\n",
+			executionCount: undefined,
+			outputCount: undefined
+		})
+		expect(summary.cells[1]?.outputCount).toBe(1)
+	})
 
-  test("read cells", () => {
-    const notebook = parseNotebook(createNotebookText());
-    expect(readAllCells(notebook)).toHaveLength(2);
-    expect(readCellById(notebook, "code-1").source).toBe("print(1)\nprint(2)\n");
-    expect(readCellsById(notebook, ["code-1", "intro"]).map((cell) => cell.id)).toEqual(["code-1", "intro"]);
-    expect(readCellRange(notebook, 0, 1).map((cell) => cell.id)).toEqual(["intro", "code-1"]);
-  });
+	test("read cells", () => {
+		const notebook = parseNotebook(createNotebookText())
+		expect(readAllCells(notebook)).toHaveLength(2)
+		expect(readCellById(notebook, "code-1").source).toBe("print(1)\nprint(2)\n")
+		expect(readCellsById(notebook, ["code-1", "intro"]).map(cell => cell.id)).toEqual(["code-1", "intro"])
+		expect(readCellRange(notebook, 0, 1).map(cell => cell.id)).toEqual(["intro", "code-1"])
+	})
 
-  test("normalizes string array source", () => {
-    expect(normalizeSource(["a", "b"])).toBe("ab");
-  });
+	test("normalizes string array source", () => {
+		expect(normalizeSource(["a", "b"])).toBe("ab")
+	})
 
-  test("rejects non-v4 notebooks", () => {
-    expect(() => parseNotebook(JSON.stringify({ nbformat: 3, cells: [] }))).toThrow(
-      "Only nbformat 4 notebooks are supported",
-    );
-  });
+	test("rejects non-v4 notebooks", () => {
+		expect(() => parseNotebook(JSON.stringify({ nbformat: 3, cells: [] }))).toThrow("Only nbformat 4 notebooks are supported")
+	})
 
-  test("parseNotebook validates root and cells", () => {
-    expect(() => parseNotebook("[]")).toThrow("Notebook root must be an object");
-    expect(() => parseNotebook(JSON.stringify({ nbformat: 4, nbformat_minor: 5, cells: {} }))).toThrow(
-      "Notebook cells must be an array",
-    );
-    expect(() => parseNotebook(JSON.stringify({ nbformat: 4, nbformat_minor: 5, cells: [null] }))).toThrow(
-      "Cell 0 must be an object",
-    );
-    expect(() => parseNotebook(JSON.stringify({ nbformat: 4, nbformat_minor: 5, cells: [{}] }))).toThrow(
-      "Cell 0 is missing cell_type",
-    );
-  });
+	test("parseNotebook validates root and cells", () => {
+		expect(() => parseNotebook("[]")).toThrow("Notebook root must be an object")
+		expect(() => parseNotebook(JSON.stringify({ nbformat: 4, nbformat_minor: 5, cells: {} }))).toThrow("Notebook cells must be an array")
+		expect(() => parseNotebook(JSON.stringify({ nbformat: 4, nbformat_minor: 5, cells: [null] }))).toThrow("Cell 0 must be an object")
+		expect(() => parseNotebook(JSON.stringify({ nbformat: 4, nbformat_minor: 5, cells: [{}] }))).toThrow("Cell 0 is missing cell_type")
+	})
 
-  test("writeCellSource replaces full source", () => {
-    const notebook = parseNotebook(createNotebookText());
-    writeCellSource(notebook, "code-1", "print(42)\n");
-    expect(readCellById(notebook, "code-1").source).toBe("print(42)\n");
-    expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }]);
-  });
+	test("writeCellSource replaces full source", () => {
+		const notebook = parseNotebook(createNotebookText())
+		writeCellSource(notebook, "code-1", "print(42)\n")
+		expect(readCellById(notebook, "code-1").source).toBe("print(42)\n")
+		expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }])
+	})
 
-  test("applyExactSourceEdits applies non-overlapping exact edits", () => {
-    expect(
-      applyExactSourceEdits("alpha beta gamma", [
-        { oldText: "alpha", newText: "one" },
-        { oldText: "gamma", newText: "three" },
-      ]),
-    ).toBe("one beta three");
-  });
+	test("applyExactSourceEdits applies non-overlapping exact edits", () => {
+		expect(
+			applyExactSourceEdits("alpha beta gamma", [
+				{ oldText: "alpha", newText: "one" },
+				{ oldText: "gamma", newText: "three" }
+			])
+		).toBe("one beta three")
+	})
 
-  test("applyExactSourceEdits rejects ambiguous matches", () => {
-    expect(() => applyExactSourceEdits("x x", [{ oldText: "x", newText: "y" }])).toThrow(
-      'Edit text is ambiguous: "x"',
-    );
-  });
+	test("applyExactSourceEdits rejects ambiguous matches", () => {
+		expect(() => applyExactSourceEdits("x x", [{ oldText: "x", newText: "y" }])).toThrow('Edit text is ambiguous: "x"')
+	})
 
-  test("applyExactSourceEdits rejects missing matches", () => {
-    expect(() => applyExactSourceEdits("abc", [{ oldText: "z", newText: "y" }])).toThrow(
-      'Edit text not found: "z"',
-    );
-  });
+	test("applyExactSourceEdits rejects missing matches", () => {
+		expect(() => applyExactSourceEdits("abc", [{ oldText: "z", newText: "y" }])).toThrow('Edit text not found: "z"')
+	})
 
-  test("applyExactSourceEdits rejects overlapping ranges", () => {
-    expect(() =>
-      applyExactSourceEdits("abcdef", [
-        { oldText: "abc", newText: "x" },
-        { oldText: "bcd", newText: "y" },
-      ])).toThrow("Edit ranges overlap");
-  });
+	test("applyExactSourceEdits rejects overlapping ranges", () => {
+		expect(() =>
+			applyExactSourceEdits("abcdef", [
+				{ oldText: "abc", newText: "x" },
+				{ oldText: "bcd", newText: "y" }
+			])
+		).toThrow("Edit ranges overlap")
+	})
 
-  test("readCellById fails on missing id", () => {
-    const notebook = parseNotebook(createNotebookText());
-    expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing");
-  });
+	test("readCellById fails on missing id", () => {
+		const notebook = parseNotebook(createNotebookText())
+		expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing")
+	})
 
-  test("writeCellSource preserves metadata and fails on missing id", () => {
-    const notebook = parseNotebook(createNotebookText());
-    writeCellSource(notebook, "code-1", "print(42)\n");
-    expect(notebook.cells[1]?.metadata).toEqual({ trusted: true });
-    expect(() => writeCellSource(notebook, "missing", "x")).toThrow("Cell not found: missing");
-  });
+	test("writeCellSource preserves metadata and fails on missing id", () => {
+		const notebook = parseNotebook(createNotebookText())
+		writeCellSource(notebook, "code-1", "print(42)\n")
+		expect(notebook.cells[1]?.metadata).toEqual({ trusted: true })
+		expect(() => writeCellSource(notebook, "missing", "x")).toThrow("Cell not found: missing")
+	})
 
-  test("editCellSource updates one cell in place and preserves outputs", () => {
-    const notebook = parseNotebook(createNotebookText());
-    editCellSource(notebook, "code-1", [{ oldText: "print(1)", newText: "print(10)" }]);
-    expect(readCellById(notebook, "code-1").source).toBe("print(10)\nprint(2)\n");
-    expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }]);
-  });
+	test("editCellSource updates one cell in place and preserves outputs", () => {
+		const notebook = parseNotebook(createNotebookText())
+		editCellSource(notebook, "code-1", [{ oldText: "print(1)", newText: "print(10)" }])
+		expect(readCellById(notebook, "code-1").source).toBe("print(10)\nprint(2)\n")
+		expect(notebook.cells[1]?.outputs).toEqual([{ output_type: "stream" }])
+	})
 
-  test("insertCell inserts a code cell after an anchor and initializes code fields", () => {
-    const notebook = parseNotebook(createNotebookText());
-    const inserted = insertCell(notebook, { cellId: "intro", direction: "after" }, { type: "code", source: "print(3)\n" });
-    expect(inserted.index).toBe(1);
-    expect(inserted.type).toBe("code");
-    expect(inserted.source).toBe("print(3)\n");
-    expect(inserted.id).toBeTruthy();
-    expect(notebook.cells[1]?.execution_count).toBeNull();
-    expect(notebook.cells[1]?.outputs).toEqual([]);
-  });
+	test("insertCell inserts a code cell after an anchor and initializes code fields", () => {
+		const notebook = parseNotebook(createNotebookText())
+		const inserted = insertCell(notebook, { cellId: "intro", direction: "after" }, { type: "code", source: "print(3)\n" })
+		expect(inserted.index).toBe(1)
+		expect(inserted.type).toBe("code")
+		expect(inserted.source).toBe("print(3)\n")
+		expect(inserted.id).toBeTruthy()
+		expect(notebook.cells[1]?.execution_count).toBeNull()
+		expect(notebook.cells[1]?.outputs).toEqual([])
+	})
 
-  test("insertCell inserts by index and rejects invalid selectors", () => {
-    const notebook = parseNotebook(createNotebookText());
-    const inserted = insertCell(notebook, { index: 1, direction: "before" }, { type: "markdown", source: "note\n" });
-    expect(inserted.index).toBe(1);
-    expect(readAllCells(notebook)[1]?.source).toBe("note\n");
-    expect(() => insertCell(notebook, { cellId: "intro", index: 0, direction: "after" }, { type: "raw", source: "x" })).toThrow(
-      "Provide exactly one of cellId or index",
-    );
-    expect(() => insertCell(notebook, { index: 99, direction: "after" }, { type: "raw", source: "x" })).toThrow(
-      "Cell index out of range: 99",
-    );
-  });
+	test("insertCell inserts by index and rejects invalid selectors", () => {
+		const notebook = parseNotebook(createNotebookText())
+		const inserted = insertCell(notebook, { index: 1, direction: "before" }, { type: "markdown", source: "note\n" })
+		expect(inserted.index).toBe(1)
+		expect(readAllCells(notebook)[1]?.source).toBe("note\n")
+		expect(() => insertCell(notebook, { cellId: "intro", index: 0, direction: "after" }, { type: "raw", source: "x" })).toThrow(
+			"Provide exactly one of cellId or index"
+		)
+		expect(() => insertCell(notebook, { index: 99, direction: "after" }, { type: "raw", source: "x" })).toThrow(
+			"Cell index out of range: 99"
+		)
+	})
 
-  test("deleteCell removes one cell and returns its prior read view", () => {
-    const notebook = parseNotebook(createNotebookText());
-    const deleted = deleteCell(notebook, "code-1");
-    expect(deleted.id).toBe("code-1");
-    expect(deleted.source).toBe("print(1)\nprint(2)\n");
-    expect(notebook.cells).toHaveLength(1);
-    expect(() => readCellById(notebook, "code-1")).toThrow("Cell not found: code-1");
-  });
+	test("deleteCell removes one cell and returns its prior read view", () => {
+		const notebook = parseNotebook(createNotebookText())
+		const deleted = deleteCell(notebook, "code-1")
+		expect(deleted.id).toBe("code-1")
+		expect(deleted.source).toBe("print(1)\nprint(2)\n")
+		expect(notebook.cells).toHaveLength(1)
+		expect(() => readCellById(notebook, "code-1")).toThrow("Cell not found: code-1")
+	})
 
-  test("moveCell reorders one cell relative to another cell", () => {
-    const notebook = parseNotebook(createNotebookText());
-    const moved = moveCell(notebook, "code-1", "intro", "before");
-    expect(moved.index).toBe(0);
-    expect(moved.id).toBe("code-1");
-    expect(readAllCells(notebook).map((cell) => cell.id)).toEqual(["code-1", "intro"]);
-    expect(() => moveCell(notebook, "code-1", "code-1", "before")).toThrow("Cannot move a cell relative to itself");
-    expect(() => moveCell(notebook, "code-1", 99, "before")).toThrow("Cell index out of range: 99");
-  });
+	test("moveCell reorders one cell relative to another cell", () => {
+		const notebook = parseNotebook(createNotebookText())
+		const moved = moveCell(notebook, "code-1", "intro", "before")
+		expect(moved.index).toBe(0)
+		expect(moved.id).toBe("code-1")
+		expect(readAllCells(notebook).map(cell => cell.id)).toEqual(["code-1", "intro"])
+		expect(() => moveCell(notebook, "code-1", "code-1", "before")).toThrow("Cannot move a cell relative to itself")
+		expect(() => moveCell(notebook, "code-1", 99, "before")).toThrow("Cell index out of range: 99")
+	})
 
-  test("mergeCell merges adjacent same-type cells and preserves the anchor id", () => {
-    const notebook = parseNotebook(JSON.stringify({
-      nbformat: 4,
-      nbformat_minor: 5,
-      cells: [
-        { cell_type: "markdown", id: "a", source: "one" },
-        { cell_type: "markdown", id: "b", source: "two\n" },
-      ],
-    }));
-    const result = mergeCell(notebook, "a", "below");
-    expect(result.merged.id).toBe("a");
-    expect(result.removed.id).toBe("b");
-    expect(result.merged.source).toBe("one\ntwo\n");
-    expect(notebook.cells).toHaveLength(1);
-  });
+	test("mergeCell merges adjacent same-type cells and preserves the anchor id", () => {
+		const notebook = parseNotebook(
+			JSON.stringify({
+				nbformat: 4,
+				nbformat_minor: 5,
+				cells: [
+					{ cell_type: "markdown", id: "a", source: "one" },
+					{ cell_type: "markdown", id: "b", source: "two\n" }
+				]
+			})
+		)
+		const result = mergeCell(notebook, "a", "below")
+		expect(result.merged.id).toBe("a")
+		expect(result.removed.id).toBe("b")
+		expect(result.merged.source).toBe("one\ntwo\n")
+		expect(notebook.cells).toHaveLength(1)
+	})
 
-  test("mergeCell rejects missing neighbors and mixed cell types", () => {
-    const notebook = parseNotebook(createNotebookText());
-    expect(() => mergeCell(notebook, "intro", "above")).toThrow("No cell to merge above from intro");
-    expect(() => mergeCell(notebook, "intro", "below")).toThrow("Cannot merge markdown cell with code cell");
-  });
+	test("mergeCell rejects missing neighbors and mixed cell types", () => {
+		const notebook = parseNotebook(createNotebookText())
+		expect(() => mergeCell(notebook, "intro", "above")).toThrow("No cell to merge above from intro")
+		expect(() => mergeCell(notebook, "intro", "below")).toThrow("Cannot merge markdown cell with code cell")
+	})
 
-  test("clearCellOutputs clears code outputs and rejects non-code cells", () => {
-    const notebook = parseNotebook(createNotebookText());
-    const cleared = clearCellOutputs(notebook, "code-1");
-    expect(cleared.id).toBe("code-1");
-    expect(notebook.cells[1]?.outputs).toEqual([]);
-    expect(notebook.cells[1]?.execution_count).toBe(7);
-    expect(() => clearCellOutputs(notebook, "intro")).toThrow("Cell is not code: intro");
-  });
+	test("clearCellOutputs clears code outputs and rejects non-code cells", () => {
+		const notebook = parseNotebook(createNotebookText())
+		const cleared = clearCellOutputs(notebook, "code-1")
+		expect(cleared.id).toBe("code-1")
+		expect(notebook.cells[1]?.outputs).toEqual([])
+		expect(notebook.cells[1]?.execution_count).toBe(7)
+		expect(() => clearCellOutputs(notebook, "intro")).toThrow("Cell is not code: intro")
+	})
 
-  test("formatNotebookSummary uses sparse key value rows", () => {
-    const summary = summarizeNotebook("demo.ipynb", parseNotebook(createNotebookText()));
-    const formatted = formatNotebookSummary(summary);
-    expect(formatted).toContain("meta nbformat=4.5 kernel=python3 cells=2 language=python");
-    expect(formatted).toContain('0 id=intro type=md lines=3 preview="# Title\\nMore text\\n"');
-    expect(formatted).toContain('1 id=code-1 type=code lines=3 n_exec=7 outputs=1 preview="print(1)\\nprint(2)\\n"');
-  });
+	test("formatNotebookSummary uses sparse key value rows", () => {
+		const summary = summarizeNotebook("demo.ipynb", parseNotebook(createNotebookText()))
+		const formatted = formatNotebookSummary(summary)
+		expect(formatted).toContain("meta nbformat=4.5 kernel=python3 cells=2 language=python")
+		expect(formatted).toContain('0 id=intro type=md lines=3 preview="# Title\\nMore text\\n"')
+		expect(formatted).toContain('1 id=code-1 type=code lines=3 n_exec=7 outputs=1 preview="print(1)\\nprint(2)\\n"')
+	})
 
-  test("summary handles missing metadata and missing source", () => {
-    const notebook = parseNotebook(
-      JSON.stringify({
-        nbformat: 4,
-        nbformat_minor: 2,
-        cells: [{ cell_type: "markdown", id: "a" }],
-      }),
-    );
-    expect(summarizeNotebook("empty.ipynb", notebook)).toEqual({
-      path: "empty.ipynb",
-      nbformat: 4,
-      nbformatMinor: 2,
-      kernelName: null,
-      language: null,
-      cellCount: 1,
-      cells: [
-        {
-          index: 0,
-          id: "a",
-          type: "markdown",
-          sourceLines: 0,
-          preview: "",
-          executionCount: undefined,
-          outputCount: undefined,
-        },
-      ],
-    });
-  });
+	test("summary handles missing metadata and missing source", () => {
+		const notebook = parseNotebook(
+			JSON.stringify({
+				nbformat: 4,
+				nbformat_minor: 2,
+				cells: [{ cell_type: "markdown", id: "a" }]
+			})
+		)
+		expect(summarizeNotebook("empty.ipynb", notebook)).toEqual({
+			path: "empty.ipynb",
+			nbformat: 4,
+			nbformatMinor: 2,
+			kernelName: null,
+			language: null,
+			cellCount: 1,
+			cells: [
+				{
+					index: 0,
+					id: "a",
+					type: "markdown",
+					sourceLines: 0,
+					preview: "",
+					executionCount: undefined,
+					outputCount: undefined
+				}
+			]
+		})
+	})
 
-  test("summary preview truncates long source with ellipsis", () => {
-    const notebook = parseNotebook(JSON.stringify({
-      nbformat: 4,
-      nbformat_minor: 5,
-      cells: [{ cell_type: "markdown", id: "a", source: "x".repeat(130) }],
-    }));
-    expect(summarizeNotebook("long.ipynb", notebook).cells[0]?.preview).toBe(`${"x".repeat(120)}...`);
-  });
+	test("summary preview truncates long source with ellipsis", () => {
+		const notebook = parseNotebook(
+			JSON.stringify({
+				nbformat: 4,
+				nbformat_minor: 5,
+				cells: [{ cell_type: "markdown", id: "a", source: "x".repeat(130) }]
+			})
+		)
+		expect(summarizeNotebook("long.ipynb", notebook).cells[0]?.preview).toBe(`${"x".repeat(120)}...`)
+	})
 
-  test("saveNotebook writes deterministic json with trailing newline", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
-    const path = join(dir, "demo.ipynb");
+	test("saveNotebook writes deterministic json with trailing newline", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "notebook-test-"))
+		const path = join(dir, "demo.ipynb")
 
-    try {
-      const notebook = parseNotebook(createNotebookText());
-      await saveNotebook(path, notebook);
-      const written = await readFile(path, "utf8");
-      expect(written.endsWith("\n")).toBe(true);
-      expect(JSON.parse(written)).toEqual(notebook);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
+		try {
+			const notebook = parseNotebook(createNotebookText())
+			await saveNotebook(path, notebook)
+			const written = await readFile(path, "utf8")
+			expect(written.endsWith("\n")).toBe(true)
+			expect(JSON.parse(written)).toEqual(notebook)
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
 
-  test("loadNotebook roundtrips saved notebook", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
-    const path = join(dir, "demo.ipynb");
+	test("loadNotebook roundtrips saved notebook", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "notebook-test-"))
+		const path = join(dir, "demo.ipynb")
 
-    try {
-      const notebook = parseNotebook(createNotebookText());
-      await saveNotebook(path, notebook);
-      expect(await loadNotebook(path)).toEqual(notebook);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
+		try {
+			const notebook = parseNotebook(createNotebookText())
+			await saveNotebook(path, notebook)
+			expect(await loadNotebook(path)).toEqual(notebook)
+		} finally {
+			await rm(dir, { recursive: true, force: true })
+		}
+	})
 
-  test("loads real fixture with cell ids and mixed cell types", async () => {
-    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
-    const summary = summarizeNotebook("lovely-history.ipynb", notebook);
+	test("loads real fixture with cell ids and mixed cell types", async () => {
+		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"))
+		const summary = summarizeNotebook("lovely-history.ipynb", notebook)
 
-    expect(summary.nbformatMinor).toBe(5);
-    expect(summary.cellCount).toBe(12);
-    expect(summary.kernelName).toBe("python3");
-    expect(summary.language).toBe(null);
-    expect(summary.cells[0]?.type).toBe("markdown");
-    expect(summary.cells[1]?.type).toBe("code");
-    expect(summary.cells[1]?.id).toBeTruthy();
-    expect(summary.cells.some((cell) => cell.outputCount === 1)).toBe(true);
-  });
+		expect(summary.nbformatMinor).toBe(5)
+		expect(summary.cellCount).toBe(12)
+		expect(summary.kernelName).toBe("python3")
+		expect(summary.language).toBe(null)
+		expect(summary.cells[0]?.type).toBe("markdown")
+		expect(summary.cells[1]?.type).toBe("code")
+		expect(summary.cells[1]?.id).toBeTruthy()
+		expect(summary.cells.some(cell => cell.outputCount === 1)).toBe(true)
+	})
 
-  test("formatNotebookRead emits notebook header and raw cell blocks", async () => {
-    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
-    const formatted = formatNotebookRead("lovely-history.ipynb", readAllCells(notebook));
-    expect(formatted).toContain('<notebook path="lovely-history.ipynb" cells="12" />');
-    expect(formatted).toContain('<cell index="4" id="95cca932" type="code" lines="3" />');
-    expect(formatted).toContain('t = torch.tensor(10, device="cuda")');
-    expect(formatted).toContain('deleted it.\\\nI did not use Lovely Tensors');
-  });
+	test("formatNotebookRead emits notebook header and raw cell blocks", async () => {
+		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"))
+		const formatted = formatNotebookRead("lovely-history.ipynb", readAllCells(notebook))
+		expect(formatted).toContain('<notebook path="lovely-history.ipynb" cells="12" />')
+		expect(formatted).toContain('<cell index="4" id="95cca932" type="code" lines="3" />')
+		expect(formatted).toContain('t = torch.tensor(10, device="cuda")')
+		expect(formatted).toContain("deleted it.\\\nI did not use Lovely Tensors")
+	})
 
-  test("summary omits null execution counts from formatted rows", async () => {
-    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
-    const formatted = formatNotebookSummary(summarizeNotebook("lovely-history.ipynb", notebook));
-    expect(formatted).toContain("1 id=57d6942b type=code lines=3 outputs=0");
-    expect(formatted).not.toContain("n_exec=null");
-  });
+	test("summary omits null execution counts from formatted rows", async () => {
+		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"))
+		const formatted = formatNotebookSummary(summarizeNotebook("lovely-history.ipynb", notebook))
+		expect(formatted).toContain("1 id=57d6942b type=code lines=3 outputs=0")
+		expect(formatted).not.toContain("n_exec=null")
+	})
 
-  test("markdown preview escapes literal trailing backslashes and newlines", async () => {
-    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"));
-    const summary = summarizeNotebook("lovely-history.ipynb", notebook);
-    const preview = summary.cells[7]?.preview ?? "";
-    const start = preview.indexOf("deleted it.");
-    expect(preview.slice(start, start + 15)).toBe("deleted it.\\\\\\n");
-  });
+	test("markdown preview escapes literal trailing backslashes and newlines", async () => {
+		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"))
+		const summary = summarizeNotebook("lovely-history.ipynb", notebook)
+		const preview = summary.cells[7]?.preview ?? ""
+		const start = preview.indexOf("deleted it.")
+		expect(preview.slice(start, start + 15)).toBe("deleted it.\\\\\\n")
+	})
 
-  test("ensureCellIds assigns short random ids and bumps minor version", async () => {
-    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
-    const assigned = ensureCellIds(notebook);
+	test("ensureCellIds assigns short random ids and bumps minor version", async () => {
+		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"))
+		const assigned = ensureCellIds(notebook)
 
-    expect(notebook.nbformat_minor).toBe(5);
-    expect(assigned).toHaveLength(2);
-    expect(notebook.cells[0]?.id).toMatch(/^[0-9a-f]{8}$/);
-    expect(notebook.cells[1]?.id).toMatch(/^[0-9a-f]{8}$/);
-  });
+		expect(notebook.nbformat_minor).toBe(5)
+		expect(assigned).toHaveLength(2)
+		expect(notebook.cells[0]?.id).toMatch(/^[0-9a-f]{8}$/)
+		expect(notebook.cells[1]?.id).toMatch(/^[0-9a-f]{8}$/)
+	})
 
-  test("real fixture without ids omits ids from summary and read", async () => {
-    const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
-    const summary = summarizeNotebook("lovely-test-no-ids.ipynb", notebook);
+	test("real fixture without ids omits ids from summary and read", async () => {
+		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"))
+		const summary = summarizeNotebook("lovely-test-no-ids.ipynb", notebook)
 
-    expect(summary.nbformatMinor).toBe(2);
-    expect(summary.cellCount).toBe(2);
-    expect(summary.cells.map((cell) => cell.id)).toEqual([undefined, undefined]);
-    expect(readAllCells(notebook).map((cell) => cell.id)).toEqual([undefined, undefined]);
-    expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing");
-  });
-});
+		expect(summary.nbformatMinor).toBe(2)
+		expect(summary.cellCount).toBe(2)
+		expect(summary.cells.map(cell => cell.id)).toEqual([undefined, undefined])
+		expect(readAllCells(notebook).map(cell => cell.id)).toEqual([undefined, undefined])
+		expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing")
+	})
+})
