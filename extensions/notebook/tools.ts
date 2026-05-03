@@ -119,7 +119,13 @@ function requireSingleCellSelector(cellId?: string, index?: number): string | nu
 	if ((cellId === undefined) === (index === undefined)) {
 		throw new Error("Provide exactly one cell selector: cellId or index")
 	}
-	return cellId ?? index!
+	return cellId ?? (index as number)
+}
+
+function requireReadCellAtIndex(notebook: Awaited<ReturnType<typeof loadNotebook>>, index: number) {
+	const cell = readAllCells(notebook)[index]
+	if (cell === undefined) throw new Error(`Cell index out of range: ${index}`)
+	return cell
 }
 
 export async function runNotebookSummary(params: NotebookSummaryParams): Promise<NotebookToolResult> {
@@ -150,7 +156,7 @@ export async function runNotebookRead(params: NotebookReadParams): Promise<Noteb
 			: params.cellIds !== undefined
 				? readCellsById(notebook, params.cellIds)
 				: params.startIndex !== undefined
-					? readCellRange(notebook, params.startIndex, params.endIndex!)
+					? readCellRange(notebook, params.startIndex, params.endIndex as number)
 					: readAllCells(notebook)
 	return {
 		content: [{ type: "text", text: formatNotebookRead(params.path, result) }],
@@ -164,7 +170,7 @@ export async function runNotebookWrite(params: NotebookWriteParams): Promise<Not
 	const assigned = ensureCellIds(notebook)
 	writeCellSource(notebook, selector, params.source)
 	await saveNotebook(params.path, notebook)
-	const result = typeof selector === "string" ? readCellById(notebook, selector) : readAllCells(notebook)[selector]!
+	const result = typeof selector === "string" ? readCellById(notebook, selector) : requireReadCellAtIndex(notebook, selector)
 	return {
 		content: [
 			{
@@ -182,7 +188,7 @@ export async function runNotebookEdit(params: NotebookEditParams): Promise<Noteb
 	const assigned = ensureCellIds(notebook)
 	editCellSource(notebook, selector, params.edits)
 	await saveNotebook(params.path, notebook)
-	const result = typeof selector === "string" ? readCellById(notebook, selector) : readAllCells(notebook)[selector]!
+	const result = typeof selector === "string" ? readCellById(notebook, selector) : requireReadCellAtIndex(notebook, selector)
 	return {
 		content: [
 			{
@@ -199,7 +205,11 @@ export async function runNotebookInsert(params: NotebookInsertParams): Promise<N
 	const assigned = ensureCellIds(notebook)
 	const result = insertCell(
 		notebook,
-		{ cellId: params.cellId, index: params.index, direction: params.direction },
+		{
+			direction: params.direction,
+			...(params.cellId === undefined ? {} : { cellId: params.cellId }),
+			...(params.index === undefined ? {} : { index: params.index })
+		},
 		{ type: params.type, source: params.source }
 	)
 	await saveNotebook(params.path, notebook)

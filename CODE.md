@@ -45,6 +45,8 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - linter enabled with recommended rules
   - excludes `.ipynb`, `node_modules`, `.git`, and `bun.lock`
   - package scripts: `typecheck`, `check`, `lint`, `format`, `format:check`, `biome:check`
+- Type-checking now uses the installed `bun-types` package via `tsconfig.json` `types: ["bun-types"]`.
+- `tsconfig.json` is stricter now: `lib: ["ES2022"]`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `noPropertyAccessFromIndexSignature`, `useUnknownInCatchVariables`, plus casing/interop/json-module checks.
 
 ## Decisions
 
@@ -57,7 +59,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 
 - Pi/manual verification is still light; most verification so far is tests plus local `bun run tool` smoke runs on real fixtures.
 - `check` now runs type-checking plus Biome (`bun run typecheck && bun run biome:check`).
-- Biome package install/CLI verification is currently blocked in this environment because `bun add` fails with a tempdir `ReadOnlyFileSystem` error, so `package.json` was updated manually and `bun.lock` was not refreshed.
+- `bun-types` is now installed and type-checking uses it directly.
 - Validation errors from Pi surface raw schema-validator messages instead of friendly allowed-value hints.
 - Save/mutation path still normalizes notebook JSON shape/format on write, even though it now aims to match common Jupyter formatting.
 - Mutation tools on no-id notebooks now rely on index selectors until ids are persisted; read-only id-based addressing is intentionally unavailable in that state.

@@ -85,6 +85,12 @@ function storedCellId(cell: NotebookCell): string | undefined {
 	return typeof cell.id === "string" && cell.id.length > 0 ? cell.id : undefined
 }
 
+function cellAt(notebook: Notebook, index: number): NotebookCell {
+	const cell = notebook.cells[index]
+	if (cell === undefined) throw new Error(`Cell index out of range: ${index}`)
+	return cell
+}
+
 export function normalizeSource(source: NotebookCell["source"]): string {
 	if (typeof source === "string") return source
 	if (Array.isArray(source)) return source.join("")
@@ -124,12 +130,14 @@ function createCellId(notebook: Notebook): string {
 }
 
 function readCell(cell: NotebookCell, index: number): NotebookReadCell {
+	const id = storedCellId(cell)
+	const executionCount = cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined
 	return {
 		index,
-		id: storedCellId(cell),
+		...(id === undefined ? {} : { id }),
 		type: cell.cell_type,
 		source: normalizeSource(cell.source),
-		executionCount: cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined
+		...(executionCount === undefined ? {} : { executionCount })
 	}
 }
 
@@ -166,12 +174,12 @@ export function ensureCellIds(notebook: Notebook): PersistedCellId[] {
 export function parseNotebook(text: string): Notebook {
 	const data: unknown = JSON.parse(text)
 	if (!isObject(data)) throw new Error("Notebook root must be an object")
-	if (data.nbformat !== 4) throw new Error("Only nbformat 4 notebooks are supported")
-	if (!Array.isArray(data.cells)) throw new Error("Notebook cells must be an array")
+	if (data["nbformat"] !== 4) throw new Error("Only nbformat 4 notebooks are supported")
+	if (!Array.isArray(data["cells"])) throw new Error("Notebook cells must be an array")
 
-	for (const [index, cell] of data.cells.entries()) {
+	for (const [index, cell] of data["cells"].entries()) {
 		if (!isObject(cell)) throw new Error(`Cell ${index} must be an object`)
-		if (typeof cell.cell_type !== "string") throw new Error(`Cell ${index} is missing cell_type`)
+		if (typeof cell["cell_type"] !== "string") throw new Error(`Cell ${index} is missing cell_type`)
 	}
 
 	return data as Notebook
@@ -190,26 +198,29 @@ export async function saveNotebook(path: string, notebook: Notebook): Promise<vo
 
 export function summarizeNotebook(path: string, notebook: Notebook): NotebookSummary {
 	const metadata = isObject(notebook.metadata) ? notebook.metadata : {}
-	const kernelspec = isObject(metadata.kernelspec) ? metadata.kernelspec : {}
-	const languageInfo = isObject(metadata.language_info) ? metadata.language_info : {}
+	const kernelspec = isObject(metadata["kernelspec"]) ? metadata["kernelspec"] : {}
+	const languageInfo = isObject(metadata["language_info"]) ? metadata["language_info"] : {}
 
 	return {
 		path,
 		nbformat: notebook.nbformat,
 		nbformatMinor: notebook.nbformat_minor,
-		kernelName: typeof kernelspec.name === "string" ? kernelspec.name : null,
-		language: typeof languageInfo.name === "string" ? languageInfo.name : null,
+		kernelName: typeof kernelspec["name"] === "string" ? kernelspec["name"] : null,
+		language: typeof languageInfo["name"] === "string" ? languageInfo["name"] : null,
 		cellCount: notebook.cells.length,
 		cells: notebook.cells.map((cell, index) => {
 			const source = normalizeSource(cell.source)
+			const id = storedCellId(cell)
+			const executionCount = cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined
+			const outputCount = cell.cell_type === "code" ? (Array.isArray(cell.outputs) ? cell.outputs.length : 0) : undefined
 			return {
 				index,
-				id: storedCellId(cell),
+				...(id === undefined ? {} : { id }),
 				type: cell.cell_type,
 				sourceLines: sourceLineCount(source),
 				preview: previewSource(source),
-				executionCount: cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined,
-				outputCount: cell.cell_type === "code" ? (Array.isArray(cell.outputs) ? cell.outputs.length : 0) : undefined
+				...(executionCount === undefined ? {} : { executionCount }),
+				...(outputCount === undefined ? {} : { outputCount })
 			}
 		})
 	}
@@ -275,7 +286,7 @@ function findCellIndexById(notebook: Notebook, cellId: string): number {
 
 export function readCellById(notebook: Notebook, cellId: string): NotebookReadCell {
 	const index = findCellIndexById(notebook, cellId)
-	return readCell(notebook.cells[index]!, index)
+	return readCell(cellAt(notebook, index), index)
 }
 
 export function readCellsById(notebook: Notebook, cellIds: string[]): NotebookReadCell[] {
@@ -295,8 +306,9 @@ export function readCellRange(notebook: Notebook, startIndex: number, endIndex: 
 
 export function writeCellSource(notebook: Notebook, cell: string | number, source: string): Notebook {
 	const index = findCellIndexBySelector(notebook, cell)
+	const current = cellAt(notebook, index)
 	notebook.cells[index] = {
-		...notebook.cells[index],
+		...current,
 		source
 	}
 	return notebook
@@ -316,7 +328,10 @@ export function applyExactSourceEdits(source: string, edits: NotebookSourceEdit[
 	const sorted = [...matches].sort((a, b) => a.start - b.start)
 
 	for (let index = 1; index < sorted.length; index += 1) {
-		if (sorted[index]!.start < sorted[index - 1]!.end) {
+		const current = sorted[index]
+		const previous = sorted[index - 1]
+		if (current === undefined || previous === undefined) throw new Error("Edit ranges overlap")
+		if (current.start < previous.end) {
 			throw new Error("Edit ranges overlap")
 		}
 	}
@@ -334,7 +349,7 @@ export function applyExactSourceEdits(source: string, edits: NotebookSourceEdit[
 
 export function editCellSource(notebook: Notebook, cell: string | number, edits: NotebookSourceEdit[]): Notebook {
 	const index = findCellIndexBySelector(notebook, cell)
-	return writeCellSource(notebook, index, applyExactSourceEdits(readCell(notebook.cells[index]!, index).source, edits))
+	return writeCellSource(notebook, index, applyExactSourceEdits(readCell(cellAt(notebook, index), index).source, edits))
 }
 
 export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cell: NotebookInsertCell): NotebookReadCell {
@@ -342,7 +357,7 @@ export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cel
 		throw new Error("Provide exactly one of cellId or index")
 	}
 
-	const anchorIndex = target.cellId !== undefined ? findCellIndexById(notebook, target.cellId) : target.index!
+	const anchorIndex = target.cellId !== undefined ? findCellIndexById(notebook, target.cellId) : (target.index as number)
 
 	if (anchorIndex !== -1 && (!Number.isInteger(anchorIndex) || anchorIndex < 0 || anchorIndex >= notebook.cells.length)) {
 		throw new Error(`Cell index out of range: ${anchorIndex}`)
@@ -364,12 +379,12 @@ export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cel
 
 	notebook.cells.splice(insertIndex, 0, nextCell)
 	if (notebook.nbformat_minor < 5) notebook.nbformat_minor = 5
-	return readAllCells(notebook)[insertIndex]!
+	return readCell(cellAt(notebook, insertIndex), insertIndex)
 }
 
 export function deleteCell(notebook: Notebook, cell: string | number): NotebookReadCell {
 	const index = findCellIndexBySelector(notebook, cell)
-	const deleted = readAllCells(notebook)[index]!
+	const deleted = readCell(cellAt(notebook, index), index)
 	notebook.cells.splice(index, 1)
 	return deleted
 }
@@ -387,11 +402,12 @@ export function moveCell(
 		throw new Error("Cannot move a cell relative to itself")
 	}
 
-	const [movedCell] = notebook.cells.splice(fromIndex, 1)
+	const movedCell = cellAt(notebook, fromIndex)
+	notebook.cells.splice(fromIndex, 1)
 	const anchorIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex
 	const insertIndex = direction === "before" ? anchorIndex : anchorIndex + 1
-	notebook.cells.splice(insertIndex, 0, movedCell!)
-	return readAllCells(notebook)[insertIndex]!
+	notebook.cells.splice(insertIndex, 0, movedCell)
+	return readCell(cellAt(notebook, insertIndex), insertIndex)
 }
 
 export function mergeCell(notebook: Notebook, cell: string | number, direction: "above" | "below"): NotebookMergeResult {
@@ -402,8 +418,8 @@ export function mergeCell(notebook: Notebook, cell: string | number, direction: 
 		throw new Error(`No cell to merge ${direction} from ${typeof cell === "string" ? cell : anchorIndex}`)
 	}
 
-	const anchor = notebook.cells[anchorIndex]!
-	const other = notebook.cells[otherIndex]!
+	const anchor = cellAt(notebook, anchorIndex)
+	const other = cellAt(notebook, otherIndex)
 	if (anchor.cell_type !== other.cell_type) {
 		throw new Error(`Cannot merge ${anchor.cell_type} cell with ${other.cell_type} cell`)
 	}
@@ -418,15 +434,15 @@ export function mergeCell(notebook: Notebook, cell: string | number, direction: 
 	const mergedIndex = direction === "above" ? anchorIndex - 1 : anchorIndex
 
 	return {
-		merged: readAllCells(notebook)[mergedIndex]!,
+		merged: readCell(cellAt(notebook, mergedIndex), mergedIndex),
 		removed: readCell(other, otherIndex)
 	}
 }
 
 export function clearCellOutputs(notebook: Notebook, cell: string | number): NotebookReadCell {
 	const index = findCellIndexBySelector(notebook, cell)
-	const current = notebook.cells[index]!
+	const current = cellAt(notebook, index)
 	if (current.cell_type !== "code") throw new Error(`Cell is not code: ${typeof cell === "string" ? cell : index}`)
 	notebook.cells[index] = { ...current, outputs: [] }
-	return readAllCells(notebook)[index]!
+	return readCell(cellAt(notebook, index), index)
 }

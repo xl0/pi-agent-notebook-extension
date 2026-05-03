@@ -39,9 +39,7 @@ describe("notebook core", () => {
 			id: "intro",
 			type: "markdown",
 			sourceLines: 3,
-			preview: "# Title\\nMore text\\n",
-			executionCount: undefined,
-			outputCount: undefined
+			preview: "# Title\\nMore text\\n"
 		})
 		expect(summary.cells[1]?.outputCount).toBe(1)
 	})
@@ -226,9 +224,7 @@ describe("notebook core", () => {
 					id: "a",
 					type: "markdown",
 					sourceLines: 0,
-					preview: "",
-					executionCount: undefined,
-					outputCount: undefined
+					preview: ""
 				}
 			]
 		})
