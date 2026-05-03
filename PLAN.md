@@ -10,15 +10,19 @@
   - keep notebook operations in pure functions, extension glue thin
 - Format support:
   - support only `nbformat === 4`
-  - expose synthetic ids for missing-id cells as `generated-<index>`
-  - persist missing cell ids on first mutation
-  - when needed, bump notebook minor to support cell ids (`4.5` semantics)
+  - do not expose synthetic ids in read/summary for missing-id cells
+  - persist missing cell ids for all cells on first mutation using short random 8-hex ids
+  - when needed, bump notebook minor to support cell ids (`4.5` semantics); never lower existing versions
+  - save using Jupyter-like JSON formatting: source as `string[]`, 1-space indentation, trailing newline
   - no support for older major notebook versions
 - Cell addressing:
-  - default to `cellId`
-  - allow index-based addressing where it helps insertion/placement
+  - default to `cellId` when present
+  - allow index-based addressing for no-id notebooks and placement operations
   - one-cell-at-a-time for write/edit/insert/delete/move/merge/clear_outputs
-  - `notebook_insert` supports exactly one anchor selector: `cellId` or `index`
+  - write/edit/delete/merge/clear_outputs support exactly one selector: `cellId` or `index`
+  - move supports exactly one source selector: `cellId` or `index`
+  - move also requires exactly one target selector: `targetCellId` or `targetIndex`, plus `direction: before|after`
+  - `notebook_insert` supports exactly one anchor selector: `cellId` or `index`; `index=-1` appends
 - Output policy:
   - preserve outputs by default
   - outputs only changed by explicit clear tool
@@ -28,16 +32,16 @@
   - separate metadata tool later if needed; not folded into source write
 - Read policy:
   - concise summary tool
-  - summary output should show both `index` and `cellId`
+  - summary output should always show `index` and should show `cellId` only when present in the notebook
   - summary output should prefer sparse key=value rows over dense CSV
   - summary preview should show escaped source snippets compactly, truncated with `...` when needed
   - summary/read formatting must preserve literal notebook backslashes in source; summary previews should escape them explicitly
   - read output should use XML-ish metadata headers plus raw source blocks
   - read supports full notebook, one `cellId`, multiple `cellIds`, or an inclusive `startIndex`/`endIndex` range
 - Move/insert/merge semantics:
-  - move: absolute final index placement
+  - move: place one cell before or after another cell by id or index; `targetIndex=-1` means the end
   - insert: anchor by `cellId` or `index`, plus `direction: before|after`
-  - merge: one anchor cell plus `direction: up|down`, keep the anchor id, require same cell type, and insert one boundary newline when needed
+  - merge: one anchor cell plus `direction: above|below`, keep the anchor id, require same cell type, and insert one boundary newline when needed
 - Images/attachments: ignore for now
 - Testing:
   - test notebook logic as pure TS functions with `bun test`
@@ -49,7 +53,7 @@
 
 - [x] Establish the repo as a real Pi package with a notebook extension entrypoint.
 - [~] Build notebook tooling in thin vertical slices: read-only first, then cell mutation tools.
-- [ ] Finish structural notebook operations and selectors.
+- [x] Finish structural notebook operations and selectors.
 - [ ] Verify against real notebooks through Pi.
 
 ## Todo

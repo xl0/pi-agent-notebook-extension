@@ -12,34 +12,30 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Implemented tools:
   - `notebook_summary({ path })`
   - `notebook_read({ path, cellId?, cellIds?, startIndex?, endIndex? })`
-  - `notebook_write({ path, cellId, source })`
-  - `notebook_edit({ path, cellId, edits })`
+  - `notebook_write({ path, cellId?|index?, source })`
+  - `notebook_edit({ path, cellId?|index?, edits })`
   - `notebook_insert({ path, cellId?|index?, direction, type, source })`
-  - `notebook_delete({ path, cellId })`
-  - `notebook_move({ path, cellId, index })`
-  - `notebook_merge({ path, cellId, direction })`
-  - `notebook_clear_outputs({ path, cellId })`
+  - `notebook_delete({ path, cellId?|index? })`
+  - `notebook_move({ path, cellId?|index?, targetCellId?|targetIndex?, direction })`
+  - `notebook_merge({ path, cellId?|index?, direction })`
+  - `notebook_clear_outputs({ path, cellId?|index? })`
 - Current notebook support:
-  - parse notebook JSON directly
-  - require `nbformat === 4`
-  - summarize kernel/language/cells
-  - human-facing summary output uses one `meta` line plus sparse per-cell key=value rows with both index and cell id
+  - parse notebook JSON directly; require `nbformat === 4`
+  - summarize kernel/language/cells via one `meta` line plus sparse per-cell key=value rows
+  - summary/read omit `id` when the notebook cell has no stored id
   - code rows include `n_exec` only when execution count is present
   - summary preview is first 120 source chars with escaped backslashes/newlines and `...` when truncated
   - read all cells, one cell by id, multiple ids, or an inclusive index range
-  - notebooks without ids expose synthetic `generated-*` ids in summary/read
+  - mutation tools accept id selectors for notebooks that already have ids, and index selectors for notebooks that do not
+  - first mutation on a no-id notebook assigns short random 8-hex ids to all cells, bumps `nbformat_minor` to `5` when needed, and appends a concise index→id mapping to tool output
   - read output uses XML-ish headers plus raw source blocks, not JSON-escaped source
-  - replace full source of one cell
-  - write accepts synthetic ids, persists them on first mutation, and returns concise confirmation text; use read to verify exact source
-  - apply exact, unique, non-overlapping source edits within one cell
-  - edit accepts synthetic ids, persists them on first mutation, and returns concise edit-style confirmation text; use read to verify exact source
-  - insert one code/markdown/raw cell before or after an anchor cell id or index with concise confirmation text
-  - delete one cell by id with concise confirmation text
-  - move one cell to an absolute index with concise confirmation text
-  - merge one cell with the adjacent same-type cell above or below, preserving the anchor id and inserting one boundary newline when needed
+  - write/edit preserve other cell fields like metadata/outputs and return concise confirmation text
+  - insert one code/markdown/raw cell before or after an anchor cell id or index; `index=-1` appends
+  - move one cell before or after another cell by id or index
+  - merge one cell with the adjacent same-type cell `above` or `below`, preserving the anchor id and inserting one boundary newline when needed
   - clear outputs from one code cell while preserving source and execution count
-  - preserve other cell fields like outputs on source writes/edits
-- Tests: `test/notebook.test.ts` now covers parse/validation, summary/read/write/edit/insert behavior, write-read source parity, failure modes, load/save roundtrips, tool-output formatting, and real `.ipynb` fixture coverage.
+  - save path rewrites notebook JSON in Jupyter-style formatting: source as `string[]`, 1-space JSON indentation, trailing newline
+- Tests: `test/notebook.test.ts` covers parse/validation, summary/read/write/edit/insert/delete/move/merge/clear_outputs behavior, id-assignment behavior, selector errors, write-read source parity, load/save roundtrips, save formatting, and real `.ipynb` fixture coverage.
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 
 ## Decisions
@@ -51,8 +47,8 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 
 ## Gaps
 
-- Current manual verification has been done via `bun run tool` on real fixtures across all implemented tools.
-- `notebook_read` only supports `cellId` or full-read, not ranges/multi-select yet.
-- Pi/manual verification done lightly for `notebook_summary`, `notebook_read`, and `notebook_edit` via `pi -p -e ./extensions/notebook/index.ts` on real fixtures.
-- Synthetic ids are currently index-derived (`generated-<index>`) until first mutation persists them.
-- Real notebook fixtures now live in `test/fixtures/`.
+- Pi/manual verification is still light; most verification so far is tests plus local `bun run tool` smoke runs on real fixtures.
+- Validation errors from Pi surface raw schema-validator messages instead of friendly allowed-value hints.
+- Save/mutation path still normalizes notebook JSON shape/format on write, even though it now aims to match common Jupyter formatting.
+- Mutation tools on no-id notebooks now rely on index selectors until ids are persisted; read-only id-based addressing is intentionally unavailable in that state.
+- Real notebook fixtures live in `test/fixtures/`.

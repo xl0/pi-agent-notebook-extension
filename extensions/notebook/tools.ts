@@ -1,5 +1,5 @@
 import { Type, type Static } from "typebox";
-import { clearCellOutputs, deleteCell, editCellSource, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, readCellRange, readCellsById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
+import { clearCellOutputs, deleteCell, editCellSource, ensureCellIds, formatNotebookRead, formatNotebookSummary, insertCell, loadNotebook, mergeCell, moveCell, readAllCells, readCellById, readCellRange, readCellsById, saveNotebook, summarizeNotebook, writeCellSource } from "./notebook";
 
 export const notebookSummaryParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
@@ -15,13 +15,15 @@ export const notebookReadParams = Type.Object({
 
 export const notebookWriteParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.String({ description: "Cell id to replace." }),
+  cellId: Type.Optional(Type.String({ description: "Cell id to replace." })),
+  index: Type.Optional(Type.Integer({ description: "Cell index to replace." })),
   source: Type.String({ description: "New full cell source." }),
 });
 
 export const notebookEditParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.String({ description: "Cell id to edit." }),
+  cellId: Type.Optional(Type.String({ description: "Cell id to edit." })),
+  index: Type.Optional(Type.Integer({ description: "Cell index to edit." })),
   edits: Type.Array(
     Type.Object({
       oldText: Type.String({ description: "Exact text to replace." }),
@@ -34,7 +36,7 @@ export const notebookEditParams = Type.Object({
 export const notebookInsertParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
   cellId: Type.Optional(Type.String({ description: "Anchor cell id." })),
-  index: Type.Optional(Type.Integer({ description: "Anchor cell index." })),
+  index: Type.Optional(Type.Integer({ description: "Anchor cell index. Use -1 to append." })),
   direction: Type.Union([Type.Literal("before"), Type.Literal("after")], { description: "Insert before or after the anchor." }),
   type: Type.Union([Type.Literal("code"), Type.Literal("markdown"), Type.Literal("raw")], { description: "New cell type." }),
   source: Type.String({ description: "Source for the new cell." }),
@@ -42,24 +44,30 @@ export const notebookInsertParams = Type.Object({
 
 export const notebookDeleteParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.String({ description: "Cell id to delete." }),
+  cellId: Type.Optional(Type.String({ description: "Cell id to delete." })),
+  index: Type.Optional(Type.Integer({ description: "Cell index to delete." })),
 });
 
 export const notebookMoveParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.String({ description: "Cell id to move." }),
-  index: Type.Integer({ description: "New absolute cell index." }),
+  cellId: Type.Optional(Type.String({ description: "Cell id to move." })),
+  index: Type.Optional(Type.Integer({ description: "Cell index to move." })),
+  targetCellId: Type.Optional(Type.String({ description: "Anchor cell id to move relative to." })),
+  targetIndex: Type.Optional(Type.Integer({ description: "Anchor cell index to move relative to. Use -1 for the end." })),
+  direction: Type.Union([Type.Literal("before"), Type.Literal("after")], { description: "Place the moved cell before or after the target." }),
 });
 
 export const notebookMergeParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.String({ description: "Anchor cell id to keep." }),
-  direction: Type.Union([Type.Literal("up"), Type.Literal("down")], { description: "Adjacent merge direction." }),
+  cellId: Type.Optional(Type.String({ description: "Anchor cell id to keep." })),
+  index: Type.Optional(Type.Integer({ description: "Anchor cell index to keep." })),
+  direction: Type.Union([Type.Literal("above"), Type.Literal("below")], { description: "Adjacent merge direction." }),
 });
 
 export const notebookClearOutputsParams = Type.Object({
   path: Type.String({ description: "Path to an .ipynb notebook." }),
-  cellId: Type.String({ description: "Code cell id whose outputs should be cleared." }),
+  cellId: Type.Optional(Type.String({ description: "Code cell id whose outputs should be cleared." })),
+  index: Type.Optional(Type.Integer({ description: "Code cell index whose outputs should be cleared." })),
 });
 
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>;
@@ -75,6 +83,18 @@ export type NotebookClearOutputsParams = Static<typeof notebookClearOutputsParam
 export interface NotebookToolResult {
   content: Array<{ type: "text"; text: string }>;
   details: unknown;
+}
+
+function formatAssignedIds(notebookPath: string, assigned: Array<{ index: number; id: string }>): string {
+  if (assigned.length === 0) return "";
+  return `\nAssigned ids in ${notebookPath}: ${assigned.map(({ index, id }) => `${index}=${id}`).join(" ")}`;
+}
+
+function requireSingleCellSelector(cellId?: string, index?: number): string | number {
+  if ((cellId === undefined) === (index === undefined)) {
+    throw new Error("Provide exactly one cell selector: cellId or index");
+  }
+  return cellId ?? index!;
 }
 
 export async function runNotebookSummary(params: NotebookSummaryParams): Promise<NotebookToolResult> {
@@ -113,72 +133,90 @@ export async function runNotebookRead(params: NotebookReadParams): Promise<Noteb
 }
 
 export async function runNotebookWrite(params: NotebookWriteParams): Promise<NotebookToolResult> {
-  const notebook = writeCellSource(await loadNotebook(params.path), params.cellId, params.source);
+  const notebook = await loadNotebook(params.path);
+  const selector = requireSingleCellSelector(params.cellId, params.index);
+  const assigned = ensureCellIds(notebook);
+  writeCellSource(notebook, selector, params.source);
   await saveNotebook(params.path, notebook);
-  const result = readCellById(notebook, params.cellId);
+  const result = typeof selector === "string" ? readCellById(notebook, selector) : readAllCells(notebook)[selector]!;
   return {
-    content: [{ type: "text", text: `Wrote cell ${params.cellId} in ${params.path}.` }],
+    content: [{ type: "text", text: `Wrote cell ${typeof selector === "string" ? selector : `index ${selector}`} in ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }
 
 export async function runNotebookEdit(params: NotebookEditParams): Promise<NotebookToolResult> {
-  const notebook = editCellSource(await loadNotebook(params.path), params.cellId, params.edits);
+  const notebook = await loadNotebook(params.path);
+  const selector = requireSingleCellSelector(params.cellId, params.index);
+  const assigned = ensureCellIds(notebook);
+  editCellSource(notebook, selector, params.edits);
   await saveNotebook(params.path, notebook);
-  const result = readCellById(notebook, params.cellId);
+  const result = typeof selector === "string" ? readCellById(notebook, selector) : readAllCells(notebook)[selector]!;
   return {
-    content: [{ type: "text", text: `Successfully replaced ${params.edits.length} block(s) in cell ${params.cellId} of ${params.path}.` }],
+    content: [{ type: "text", text: `Successfully replaced ${params.edits.length} block(s) in cell ${typeof selector === "string" ? selector : `index ${selector}`} of ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }
 
 export async function runNotebookInsert(params: NotebookInsertParams): Promise<NotebookToolResult> {
   const notebook = await loadNotebook(params.path);
+  const assigned = ensureCellIds(notebook);
   const result = insertCell(notebook, { cellId: params.cellId, index: params.index, direction: params.direction }, { type: params.type, source: params.source });
   await saveNotebook(params.path, notebook);
-  const anchor = params.cellId ?? `index ${params.index}`;
+  const anchor = params.cellId ?? (params.index === -1 ? "the end" : `index ${params.index}`);
+  const placement = params.index === -1 ? "at" : params.direction;
   return {
-    content: [{ type: "text", text: `Inserted cell ${result.id} ${params.direction} ${anchor} in ${params.path}.` }],
+    content: [{ type: "text", text: `Inserted cell ${result.id} ${placement} ${anchor} in ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }
 
 export async function runNotebookDelete(params: NotebookDeleteParams): Promise<NotebookToolResult> {
   const notebook = await loadNotebook(params.path);
-  const result = deleteCell(notebook, params.cellId);
+  const selector = requireSingleCellSelector(params.cellId, params.index);
+  const assigned = ensureCellIds(notebook);
+  const result = deleteCell(notebook, selector);
   await saveNotebook(params.path, notebook);
   return {
-    content: [{ type: "text", text: `Deleted cell ${params.cellId} from ${params.path}.` }],
+    content: [{ type: "text", text: `Deleted cell ${typeof selector === "string" ? selector : `index ${selector}`} from ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }
 
 export async function runNotebookMove(params: NotebookMoveParams): Promise<NotebookToolResult> {
   const notebook = await loadNotebook(params.path);
-  const result = moveCell(notebook, params.cellId, params.index);
+  const selector = requireSingleCellSelector(params.cellId, params.index);
+  const target = requireSingleCellSelector(params.targetCellId, params.targetIndex);
+  const assigned = ensureCellIds(notebook);
+  const result = moveCell(notebook, selector, target, params.direction);
   await saveNotebook(params.path, notebook);
+  const targetText = typeof target === "string" ? target : target === -1 ? "the end" : `index ${target}`;
   return {
-    content: [{ type: "text", text: `Moved cell ${params.cellId} to index ${params.index} in ${params.path}.` }],
+    content: [{ type: "text", text: `Moved cell ${typeof selector === "string" ? selector : `index ${selector}`} ${params.direction} ${targetText} in ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }
 
 export async function runNotebookMerge(params: NotebookMergeParams): Promise<NotebookToolResult> {
   const notebook = await loadNotebook(params.path);
-  const result = mergeCell(notebook, params.cellId, params.direction);
+  const selector = requireSingleCellSelector(params.cellId, params.index);
+  const assigned = ensureCellIds(notebook);
+  const result = mergeCell(notebook, selector, params.direction);
   await saveNotebook(params.path, notebook);
   return {
-    content: [{ type: "text", text: `Merged cell ${result.removed.id} into ${params.cellId} in ${params.path}.` }],
+    content: [{ type: "text", text: `Merged cell ${result.removed.id ?? `index ${result.removed.index}`} into ${typeof selector === "string" ? selector : `index ${selector}`} in ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }
 
 export async function runNotebookClearOutputs(params: NotebookClearOutputsParams): Promise<NotebookToolResult> {
   const notebook = await loadNotebook(params.path);
-  const result = clearCellOutputs(notebook, params.cellId);
+  const selector = requireSingleCellSelector(params.cellId, params.index);
+  const assigned = ensureCellIds(notebook);
+  const result = clearCellOutputs(notebook, selector);
   await saveNotebook(params.path, notebook);
   return {
-    content: [{ type: "text", text: `Cleared outputs for cell ${params.cellId} in ${params.path}.` }],
+    content: [{ type: "text", text: `Cleared outputs for cell ${typeof selector === "string" ? selector : `index ${selector}`} in ${params.path}.${formatAssignedIds(params.path, assigned)}` }],
     details: result,
   };
 }

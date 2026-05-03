@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 export interface NotebookCell {
@@ -21,7 +21,7 @@ export interface Notebook {
 
 export interface NotebookCellSummary {
   index: number;
-  id: string | null;
+  id?: string;
   type: string;
   sourceLines: number;
   preview: string;
@@ -41,10 +41,15 @@ export interface NotebookSummary {
 
 export interface NotebookReadCell {
   index: number;
-  id: string;
+  id?: string;
   type: string;
   source: string;
   executionCount?: number | null;
+}
+
+export interface PersistedCellId {
+  index: number;
+  id: string;
 }
 
 function quoteAttribute(text: string): string {
@@ -76,10 +81,19 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function storedCellId(cell: NotebookCell): string | undefined {
+  return typeof cell.id === "string" && cell.id.length > 0 ? cell.id : undefined;
+}
+
 export function normalizeSource(source: NotebookCell["source"]): string {
   if (typeof source === "string") return source;
   if (Array.isArray(source)) return source.join("");
   return "";
+}
+
+function sourceToLines(source: string): string[] {
+  if (source.length === 0) return [];
+  return source.match(/[^\n]*\n|[^\n]+/g) ?? [];
 }
 
 function previewSource(source: string): string {
@@ -102,35 +116,51 @@ function sourceLineCount(source: string): number {
   return source.split("\n").length;
 }
 
-function syntheticCellId(index: number): string {
-  return `generated-${index}`;
+function createCellId(notebook: Notebook): string {
+  const ids = new Set(notebook.cells.map((cell) => storedCellId(cell)).filter((id): id is string => id !== undefined));
+  let id = randomBytes(4).toString("hex");
+  while (ids.has(id)) id = randomBytes(4).toString("hex");
+  return id;
 }
 
-export function getCellId(cell: NotebookCell, index: number): string {
-  return typeof cell.id === "string" && cell.id.length > 0 ? cell.id : syntheticCellId(index);
+function readCell(cell: NotebookCell, index: number): NotebookReadCell {
+  return {
+    index,
+    id: storedCellId(cell),
+    type: cell.cell_type,
+    source: normalizeSource(cell.source),
+    executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
+  };
 }
 
-export function ensureCellIds(notebook: Notebook): Notebook {
-  let changed = false;
-
-  for (const [index, cell] of notebook.cells.entries()) {
-    if (typeof cell.id === "string" && cell.id.length > 0) continue;
-    notebook.cells[index] = { ...cell, id: syntheticCellId(index) };
-    changed = true;
+function findCellIndexBySelector(notebook: Notebook, selector: string | number): number {
+  if (typeof selector === "number") {
+    if (!Number.isInteger(selector) || selector < 0 || selector >= notebook.cells.length) {
+      throw new Error(`Cell index out of range: ${selector}`);
+    }
+    return selector;
   }
 
-  if (changed && notebook.nbformat_minor < 5) {
+  const index = notebook.cells.findIndex((cell) => storedCellId(cell) === selector);
+  if (index === -1) throw new Error(`Cell not found: ${selector}`);
+  return index;
+}
+
+export function ensureCellIds(notebook: Notebook): PersistedCellId[] {
+  const assigned: PersistedCellId[] = [];
+
+  for (const [index, cell] of notebook.cells.entries()) {
+    if (storedCellId(cell)) continue;
+    const id = createCellId(notebook);
+    notebook.cells[index] = { ...cell, id };
+    assigned.push({ index, id });
+  }
+
+  if (assigned.length > 0 && notebook.nbformat_minor < 5) {
     notebook.nbformat_minor = 5;
   }
 
-  return notebook;
-}
-
-function createCellId(notebook: Notebook): string {
-  const ids = new Set(notebook.cells.map((cell, index) => getCellId(cell, index)));
-  let id = randomUUID();
-  while (ids.has(id)) id = randomUUID();
-  return id;
+  return assigned;
 }
 
 export function parseNotebook(text: string): Notebook {
@@ -152,7 +182,10 @@ export async function loadNotebook(path: string): Promise<Notebook> {
 }
 
 export async function saveNotebook(path: string, notebook: Notebook): Promise<void> {
-  await writeFile(path, `${JSON.stringify(notebook, null, 2)}\n`, "utf8");
+  for (const [index, cell] of notebook.cells.entries()) {
+    notebook.cells[index] = { ...cell, source: sourceToLines(normalizeSource(cell.source)) };
+  }
+  await writeFile(path, `${JSON.stringify(notebook, null, 1)}\n`, "utf8");
 }
 
 export function summarizeNotebook(path: string, notebook: Notebook): NotebookSummary {
@@ -171,7 +204,7 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
       const source = normalizeSource(cell.source);
       return {
         index,
-        id: getCellId(cell, index),
+        id: storedCellId(cell),
         type: cell.cell_type,
         sourceLines: sourceLineCount(source),
         preview: previewSource(source),
@@ -191,10 +224,10 @@ export function formatNotebookSummary(summary: NotebookSummary): string {
     ...summary.cells.map((cell) => {
       const parts = [
         String(cell.index),
-        `id=${cell.id ?? ""}`,
         `type=${cell.type === "markdown" ? "md" : cell.type}`,
         `lines=${cell.sourceLines}`,
       ];
+      if (cell.id) parts.splice(1, 0, `id=${cell.id}`);
       if (cell.executionCount !== undefined && cell.executionCount !== null) parts.push(`n_exec=${cell.executionCount}`);
       if (cell.outputCount !== undefined) parts.push(`outputs=${cell.outputCount}`);
       parts.push(`preview=${quotePreview(cell.preview)}`);
@@ -217,10 +250,10 @@ export function formatNotebookRead(path: string, cells: NotebookReadCell | Noteb
   for (const [index, cell] of list.entries()) {
     const attrs = [
       `index=${quoteAttribute(String(cell.index))}`,
-      `id=${quoteAttribute(cell.id ?? "")}`,
       `type=${quoteAttribute(cell.type === "markdown" ? "md" : cell.type)}`,
       `lines=${quoteAttribute(String(sourceLineCount(cell.source)))}`,
     ];
+    if (cell.id) attrs.splice(1, 0, `id=${quoteAttribute(cell.id)}`);
     if (cell.executionCount !== undefined && cell.executionCount !== null) {
       attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`);
     }
@@ -233,31 +266,16 @@ export function formatNotebookRead(path: string, cells: NotebookReadCell | Noteb
 }
 
 export function readAllCells(notebook: Notebook): NotebookReadCell[] {
-  return notebook.cells.map((cell, index) => ({
-    index,
-    id: getCellId(cell, index),
-    type: cell.cell_type,
-    source: normalizeSource(cell.source),
-    executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
-  }));
+  return notebook.cells.map((cell, index) => readCell(cell, index));
 }
 
 function findCellIndexById(notebook: Notebook, cellId: string): number {
-  const index = notebook.cells.findIndex((cell, i) => getCellId(cell, i) === cellId);
-  if (index === -1) throw new Error(`Cell not found: ${cellId}`);
-  return index;
+  return findCellIndexBySelector(notebook, cellId);
 }
 
 export function readCellById(notebook: Notebook, cellId: string): NotebookReadCell {
   const index = findCellIndexById(notebook, cellId);
-  const cell = notebook.cells[index]!;
-  return {
-    index,
-    id: getCellId(cell, index),
-    type: cell.cell_type,
-    source: normalizeSource(cell.source),
-    executionCount: cell.cell_type === "code" ? (cell.execution_count as number | null | undefined) ?? null : undefined,
-  };
+  return readCell(notebook.cells[index]!, index);
 }
 
 export function readCellsById(notebook: Notebook, cellIds: string[]): NotebookReadCell[] {
@@ -275,9 +293,8 @@ export function readCellRange(notebook: Notebook, startIndex: number, endIndex: 
   return readAllCells(notebook).slice(startIndex, endIndex + 1);
 }
 
-export function writeCellSource(notebook: Notebook, cellId: string, source: string): Notebook {
-  ensureCellIds(notebook);
-  const index = findCellIndexById(notebook, cellId);
+export function writeCellSource(notebook: Notebook, cell: string | number, source: string): Notebook {
+  const index = findCellIndexBySelector(notebook, cell);
   notebook.cells[index] = {
     ...notebook.cells[index],
     source,
@@ -315,14 +332,12 @@ export function applyExactSourceEdits(source: string, edits: NotebookSourceEdit[
   return result;
 }
 
-export function editCellSource(notebook: Notebook, cellId: string, edits: NotebookSourceEdit[]): Notebook {
-  const current = readCellById(notebook, cellId);
-  return writeCellSource(notebook, cellId, applyExactSourceEdits(current.source, edits));
+export function editCellSource(notebook: Notebook, cell: string | number, edits: NotebookSourceEdit[]): Notebook {
+  const index = findCellIndexBySelector(notebook, cell);
+  return writeCellSource(notebook, index, applyExactSourceEdits(readCell(notebook.cells[index]!, index).source, edits));
 }
 
 export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cell: NotebookInsertCell): NotebookReadCell {
-  ensureCellIds(notebook);
-
   if ((target.cellId === undefined) === (target.index === undefined)) {
     throw new Error("Provide exactly one of cellId or index");
   }
@@ -331,11 +346,11 @@ export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cel
     ? findCellIndexById(notebook, target.cellId)
     : target.index!;
 
-  if (!Number.isInteger(anchorIndex) || anchorIndex < 0 || anchorIndex >= notebook.cells.length) {
+  if (anchorIndex !== -1 && (!Number.isInteger(anchorIndex) || anchorIndex < 0 || anchorIndex >= notebook.cells.length)) {
     throw new Error(`Cell index out of range: ${anchorIndex}`);
   }
 
-  const insertIndex = anchorIndex + (target.direction === "after" ? 1 : 0);
+  const insertIndex = anchorIndex === -1 ? notebook.cells.length : anchorIndex + (target.direction === "after" ? 1 : 0);
   const id = createCellId(notebook);
   const nextCell: NotebookCell = {
     cell_type: cell.type,
@@ -354,32 +369,41 @@ export function insertCell(notebook: Notebook, target: NotebookInsertTarget, cel
   return readAllCells(notebook)[insertIndex]!;
 }
 
-export function deleteCell(notebook: Notebook, cellId: string): NotebookReadCell {
-  ensureCellIds(notebook);
-  const index = findCellIndexById(notebook, cellId);
+export function deleteCell(notebook: Notebook, cell: string | number): NotebookReadCell {
+  const index = findCellIndexBySelector(notebook, cell);
   const deleted = readAllCells(notebook)[index]!;
   notebook.cells.splice(index, 1);
   return deleted;
 }
 
-export function moveCell(notebook: Notebook, cellId: string, index: number): NotebookReadCell {
-  ensureCellIds(notebook);
-  const fromIndex = findCellIndexById(notebook, cellId);
-  if (!Number.isInteger(index) || index < 0 || index >= notebook.cells.length) {
-    throw new Error(`Cell index out of range: ${index}`);
+export function moveCell(
+  notebook: Notebook,
+  cell: string | number,
+  target: string | number,
+  direction: "before" | "after",
+): NotebookReadCell {
+  const fromIndex = findCellIndexBySelector(notebook, cell);
+  const targetIndex = typeof target === "number" && target === -1
+    ? notebook.cells.length - 1
+    : findCellIndexBySelector(notebook, target);
+
+  if (targetIndex === fromIndex) {
+    throw new Error("Cannot move a cell relative to itself");
   }
-  const [cell] = notebook.cells.splice(fromIndex, 1);
-  notebook.cells.splice(index, 0, cell!);
-  return readAllCells(notebook)[index]!;
+
+  const [movedCell] = notebook.cells.splice(fromIndex, 1);
+  const anchorIndex = fromIndex < targetIndex ? targetIndex - 1 : targetIndex;
+  const insertIndex = direction === "before" ? anchorIndex : anchorIndex + 1;
+  notebook.cells.splice(insertIndex, 0, movedCell!);
+  return readAllCells(notebook)[insertIndex]!;
 }
 
-export function mergeCell(notebook: Notebook, cellId: string, direction: "up" | "down"): NotebookMergeResult {
-  ensureCellIds(notebook);
-  const anchorIndex = findCellIndexById(notebook, cellId);
-  const otherIndex = anchorIndex + (direction === "up" ? -1 : 1);
+export function mergeCell(notebook: Notebook, cell: string | number, direction: "above" | "below"): NotebookMergeResult {
+  const anchorIndex = findCellIndexBySelector(notebook, cell);
+  const otherIndex = anchorIndex + (direction === "above" ? -1 : 1);
 
   if (otherIndex < 0 || otherIndex >= notebook.cells.length) {
-    throw new Error(`No cell to merge ${direction} from ${cellId}`);
+    throw new Error(`No cell to merge ${direction} from ${typeof cell === "string" ? cell : anchorIndex}`);
   }
 
   const anchor = notebook.cells[anchorIndex]!;
@@ -388,32 +412,24 @@ export function mergeCell(notebook: Notebook, cellId: string, direction: "up" | 
     throw new Error(`Cannot merge ${anchor.cell_type} cell with ${other.cell_type} cell`);
   }
 
-  const source = direction === "up"
+  const source = direction === "above"
     ? joinCellSources(normalizeSource(other.source), normalizeSource(anchor.source))
     : joinCellSources(normalizeSource(anchor.source), normalizeSource(other.source));
 
   notebook.cells[anchorIndex] = { ...anchor, source };
-  const removedIndex = otherIndex;
-  notebook.cells.splice(removedIndex, 1);
-  const mergedIndex = direction === "up" ? anchorIndex - 1 : anchorIndex;
+  notebook.cells.splice(otherIndex, 1);
+  const mergedIndex = direction === "above" ? anchorIndex - 1 : anchorIndex;
 
   return {
     merged: readAllCells(notebook)[mergedIndex]!,
-    removed: {
-      index: otherIndex,
-      id: getCellId(other, otherIndex),
-      type: other.cell_type,
-      source: normalizeSource(other.source),
-      executionCount: other.cell_type === "code" ? (other.execution_count as number | null | undefined) ?? null : undefined,
-    },
+    removed: readCell(other, otherIndex),
   };
 }
 
-export function clearCellOutputs(notebook: Notebook, cellId: string): NotebookReadCell {
-  ensureCellIds(notebook);
-  const index = findCellIndexById(notebook, cellId);
-  const cell = notebook.cells[index]!;
-  if (cell.cell_type !== "code") throw new Error(`Cell is not code: ${cellId}`);
-  notebook.cells[index] = { ...cell, outputs: [] };
+export function clearCellOutputs(notebook: Notebook, cell: string | number): NotebookReadCell {
+  const index = findCellIndexBySelector(notebook, cell);
+  const current = notebook.cells[index]!;
+  if (current.cell_type !== "code") throw new Error(`Cell is not code: ${typeof cell === "string" ? cell : index}`);
+  notebook.cells[index] = { ...current, outputs: [] };
   return readAllCells(notebook)[index]!;
 }

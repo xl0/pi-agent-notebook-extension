@@ -39,6 +39,17 @@ async function copyFixture(name: string) {
   };
 }
 
+async function createTempNotebook(name: string, text: string) {
+  const dir = await mkdtemp(join(tmpdir(), "notebook-test-"));
+  const path = join(dir, name);
+  await Bun.write(path, text);
+  return {
+    dir,
+    path,
+    cleanup: () => rm(dir, { recursive: true, force: true }),
+  };
+}
+
 function createNotebookText() {
   return JSON.stringify({
     nbformat: 4,
@@ -193,13 +204,14 @@ describe("notebook core", () => {
     expect(() => readCellById(notebook, "code-1")).toThrow("Cell not found: code-1");
   });
 
-  test("moveCell reorders one cell to an absolute index", () => {
+  test("moveCell reorders one cell relative to another cell", () => {
     const notebook = parseNotebook(createNotebookText());
-    const moved = moveCell(notebook, "code-1", 0);
+    const moved = moveCell(notebook, "code-1", "intro", "before");
     expect(moved.index).toBe(0);
     expect(moved.id).toBe("code-1");
     expect(readAllCells(notebook).map((cell) => cell.id)).toEqual(["code-1", "intro"]);
-    expect(() => moveCell(notebook, "code-1", 99)).toThrow("Cell index out of range: 99");
+    expect(() => moveCell(notebook, "code-1", "code-1", "before")).toThrow("Cannot move a cell relative to itself");
+    expect(() => moveCell(notebook, "code-1", 99, "before")).toThrow("Cell index out of range: 99");
   });
 
   test("mergeCell merges adjacent same-type cells and preserves the anchor id", () => {
@@ -211,7 +223,7 @@ describe("notebook core", () => {
         { cell_type: "markdown", id: "b", source: "two\n" },
       ],
     }));
-    const result = mergeCell(notebook, "a", "down");
+    const result = mergeCell(notebook, "a", "below");
     expect(result.merged.id).toBe("a");
     expect(result.removed.id).toBe("b");
     expect(result.merged.source).toBe("one\ntwo\n");
@@ -220,8 +232,8 @@ describe("notebook core", () => {
 
   test("mergeCell rejects missing neighbors and mixed cell types", () => {
     const notebook = parseNotebook(createNotebookText());
-    expect(() => mergeCell(notebook, "intro", "up")).toThrow("No cell to merge up from intro");
-    expect(() => mergeCell(notebook, "intro", "down")).toThrow("Cannot merge markdown cell with code cell");
+    expect(() => mergeCell(notebook, "intro", "above")).toThrow("No cell to merge above from intro");
+    expect(() => mergeCell(notebook, "intro", "below")).toThrow("Cannot merge markdown cell with code cell");
   });
 
   test("clearCellOutputs clears code outputs and rejects non-code cells", () => {
@@ -355,7 +367,7 @@ describe("notebook core", () => {
   test("runNotebookRead returns notebook wrapper for full read", async () => {
     const result = await runNotebookRead({ path: join(FIXTURE_DIR, "lovely-test-no-ids.ipynb") });
     expect(result.content[0]?.text).toContain('<notebook path=');
-    expect(result.content[0]?.text).toContain('<cell index="0" id="generated-0" type="code" lines="1" n_exec="1" />');
+    expect(result.content[0]?.text).toContain('<cell index="0" type="code" lines="1" n_exec="1" />');
     expect(result.content[0]?.text).toContain('# %matplotlib inline');
   });
 
@@ -471,7 +483,7 @@ describe("notebook core", () => {
         source: "print(123)\n",
       });
       const inserted = result.details as { id: string };
-      expect(result.content[0]?.text).toBe(`Inserted cell ${inserted.id} after index 0 in ${fixture.path}.`);
+      expect(result.content[0]?.text).toMatch(new RegExp(`^Inserted cell ${inserted.id} after index 0 in ${fixture.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`));
       expect(readCellById(await loadNotebook(fixture.path), inserted.id).source).toBe("print(123)\n");
     } finally {
       await fixture.cleanup();
@@ -495,6 +507,28 @@ describe("notebook core", () => {
     }
   });
 
+  test("runNotebookInsert appends with index -1", async () => {
+    const fixture = await createTempNotebook("empty.ipynb", '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":2}\n');
+
+    try {
+      const result = await runNotebookInsert({
+        path: fixture.path,
+        index: -1,
+        direction: "after",
+        type: "code",
+        source: "print(1)\n",
+      });
+      const inserted = result.details as { id: string };
+      expect(result.content[0]?.text).toBe(`Inserted cell ${inserted.id} at the end in ${fixture.path}.`);
+      const saved = await loadNotebook(fixture.path);
+      expect(saved.cells).toHaveLength(1);
+      expect(saved.cells[0]?.id).toBe(inserted.id);
+      expect(saved.cells[0]?.source).toEqual(["print(1)\n"]);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   test("runNotebookDelete returns concise confirmation and removes the cell", async () => {
     const fixture = await copyFixture("lovely-history.ipynb");
 
@@ -507,15 +541,15 @@ describe("notebook core", () => {
     }
   });
 
-  test("runNotebookDelete works on synthetic ids", async () => {
+  test("runNotebookDelete works by index on notebooks without ids", async () => {
     const fixture = await copyFixture("lovely-test-no-ids.ipynb");
 
     try {
-      const result = await runNotebookDelete({ path: fixture.path, cellId: "generated-0" });
-      expect(result.content[0]?.text).toBe(`Deleted cell generated-0 from ${fixture.path}.`);
+      const result = await runNotebookDelete({ path: fixture.path, index: 0 });
+      expect(result.content[0]?.text).toMatch(new RegExp(`^Deleted cell index 0 from ${fixture.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`));
       const remaining = await runNotebookRead({ path: fixture.path });
       expect(remaining.content[0]?.text).toContain('cells="1"');
-      expect(remaining.content[0]?.text).toContain('id="generated-1"');
+      expect(remaining.content[0]?.text).toContain('id="');
     } finally {
       await fixture.cleanup();
     }
@@ -535,23 +569,24 @@ describe("notebook core", () => {
     const fixture = await copyFixture("lovely-history.ipynb");
 
     try {
-      const result = await runNotebookMove({ path: fixture.path, cellId: "95cca932", index: 1 });
-      expect(result.content[0]?.text).toBe(`Moved cell 95cca932 to index 1 in ${fixture.path}.`);
+      const result = await runNotebookMove({ path: fixture.path, cellId: "95cca932", targetCellId: "57d6942b", direction: "after" });
+      expect(result.content[0]?.text).toBe(`Moved cell 95cca932 after 57d6942b in ${fixture.path}.`);
       const summary = await runNotebookRead({ path: fixture.path });
-      expect(summary.content[0]?.text).toContain('<cell index="1" id="95cca932" type="code" lines="3" />');
+      expect(summary.content[0]?.text).toContain('<cell index="2" id="95cca932" type="code" lines="3" />');
     } finally {
       await fixture.cleanup();
     }
   });
 
-  test("runNotebookMove works on synthetic ids", async () => {
+  test("runNotebookMove works by index on notebooks without ids", async () => {
     const fixture = await copyFixture("lovely-test-no-ids.ipynb");
 
     try {
-      const result = await runNotebookMove({ path: fixture.path, cellId: "generated-1", index: 0 });
-      expect(result.content[0]?.text).toBe(`Moved cell generated-1 to index 0 in ${fixture.path}.`);
+      const result = await runNotebookMove({ path: fixture.path, index: 1, targetIndex: 0, direction: "before" });
+      expect(result.content[0]?.text).toMatch(new RegExp(`^Moved cell index 1 before index 0 in ${fixture.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`));
       const readResult = await runNotebookRead({ path: fixture.path });
-      expect(readResult.content[0]?.text).toContain('<cell index="0" id="generated-1" type="code" lines="17" n_exec="2" />');
+      expect(readResult.content[0]?.text).toContain('<cell index="0" id="');
+      expect(readResult.content[0]?.text).toContain('type="code" lines="17" n_exec="2"');
     } finally {
       await fixture.cleanup();
     }
@@ -561,7 +596,7 @@ describe("notebook core", () => {
     const fixture = await copyFixture("lovely-history.ipynb");
 
     try {
-      await expect(runNotebookMove({ path: fixture.path, cellId: "95cca932", index: 99 })).rejects.toThrow("Cell index out of range: 99");
+      await expect(runNotebookMove({ path: fixture.path, cellId: "95cca932", targetIndex: 99, direction: "before" })).rejects.toThrow("Cell index out of range: 99");
     } finally {
       await fixture.cleanup();
     }
@@ -571,7 +606,7 @@ describe("notebook core", () => {
     const fixture = await copyFixture("lovely-history.ipynb");
 
     try {
-      const result = await runNotebookMerge({ path: fixture.path, cellId: "ffd208cf", direction: "down" });
+      const result = await runNotebookMerge({ path: fixture.path, cellId: "ffd208cf", direction: "below" });
       expect(result.content[0]?.text).toBe(`Merged cell 95cca932 into ffd208cf in ${fixture.path}.`);
       const readResult = await runNotebookRead({ path: fixture.path, cellId: "ffd208cf" });
       expect(readResult.content[0]?.text).toContain('torch.cuda.memory_allocated()\n# |eval: false');
@@ -580,13 +615,13 @@ describe("notebook core", () => {
     }
   });
 
-  test("runNotebookMerge works on synthetic ids", async () => {
+  test("runNotebookMerge works by index on notebooks without ids", async () => {
     const fixture = await copyFixture("lovely-test-no-ids.ipynb");
 
     try {
-      const result = await runNotebookMerge({ path: fixture.path, cellId: "generated-0", direction: "down" });
-      expect(result.content[0]?.text).toBe(`Merged cell generated-1 into generated-0 in ${fixture.path}.`);
-      const readResult = await runNotebookRead({ path: fixture.path, cellId: "generated-0" });
+      const result = await runNotebookMerge({ path: fixture.path, index: 0, direction: "below" });
+      expect(result.content[0]?.text).toMatch(new RegExp(`^Merged cell [0-9a-f]{8} into index 0 in ${fixture.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`));
+      const readResult = await runNotebookRead({ path: fixture.path, startIndex: 0, endIndex: 0 });
       expect(readResult.content[0]?.text).toContain('# %matplotlib inline\n#!/usr/bin/env python3');
     } finally {
       await fixture.cleanup();
@@ -597,8 +632,8 @@ describe("notebook core", () => {
     const fixture = await copyFixture("lovely-history.ipynb");
 
     try {
-      await expect(runNotebookMerge({ path: fixture.path, cellId: "20735603", direction: "up" })).rejects.toThrow(
-        "No cell to merge up from 20735603",
+      await expect(runNotebookMerge({ path: fixture.path, cellId: "20735603", direction: "above" })).rejects.toThrow(
+        "No cell to merge above from 20735603",
       );
     } finally {
       await fixture.cleanup();
@@ -618,16 +653,17 @@ describe("notebook core", () => {
     }
   });
 
-  test("runNotebookClearOutputs works on synthetic ids and preserves execution count", async () => {
+  test("runNotebookClearOutputs works by index on notebooks without ids and preserves execution count", async () => {
     const fixture = await copyFixture("lovely-test-no-ids.ipynb");
 
     try {
-      const result = await runNotebookClearOutputs({ path: fixture.path, cellId: "generated-1" });
-      expect(result.content[0]?.text).toBe(`Cleared outputs for cell generated-1 in ${fixture.path}.`);
-      const readResult = await runNotebookRead({ path: fixture.path, cellId: "generated-1" });
-      expect(readResult.content[0]?.text).toContain('n_exec="2"');
+      const result = await runNotebookClearOutputs({ path: fixture.path, index: 1 });
+      expect(result.content[0]?.text).toMatch(new RegExp(`^Cleared outputs for cell index 1 in ${fixture.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`));
+      const saved = await loadNotebook(fixture.path);
+      expect(readAllCells(saved)[1]?.executionCount).toBe(2);
       const summary = await runNotebookSummary({ path: fixture.path });
-      expect(summary.content[0]?.text).toContain('1 id=generated-1 type=code lines=17 n_exec=2 outputs=0');
+      expect(summary.content[0]?.text).toContain('1 id=');
+      expect(summary.content[0]?.text).toContain('n_exec=2 outputs=0');
     } finally {
       await fixture.cleanup();
     }
@@ -662,55 +698,58 @@ describe("notebook core", () => {
     }
   });
 
-  test("ensureCellIds assigns synthetic ids and bumps minor version", async () => {
+  test("ensureCellIds assigns short random ids and bumps minor version", async () => {
     const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
-    ensureCellIds(notebook);
+    const assigned = ensureCellIds(notebook);
 
     expect(notebook.nbformat_minor).toBe(5);
-    expect(notebook.cells[0]?.id).toBe("generated-0");
-    expect(notebook.cells[1]?.id).toBe("generated-1");
+    expect(assigned).toHaveLength(2);
+    expect(notebook.cells[0]?.id).toMatch(/^[0-9a-f]{8}$/);
+    expect(notebook.cells[1]?.id).toMatch(/^[0-9a-f]{8}$/);
   });
 
-  test("real fixture without ids exposes synthetic ids for summary and read", async () => {
+  test("real fixture without ids omits ids from summary and read", async () => {
     const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-test-no-ids.ipynb"));
     const summary = summarizeNotebook("lovely-test-no-ids.ipynb", notebook);
 
     expect(summary.nbformatMinor).toBe(2);
     expect(summary.cellCount).toBe(2);
-    expect(summary.cells.map((cell) => cell.id)).toEqual(["generated-0", "generated-1"]);
-    expect(readAllCells(notebook).map((cell) => cell.id)).toEqual(["generated-0", "generated-1"]);
-    expect(readCellById(notebook, "generated-0").source).toBe("# %matplotlib inline");
+    expect(summary.cells.map((cell) => cell.id)).toEqual([undefined, undefined]);
+    expect(readAllCells(notebook).map((cell) => cell.id)).toEqual([undefined, undefined]);
     expect(() => readCellById(notebook, "missing")).toThrow("Cell not found: missing");
   });
 
-  test("runNotebookWrite persists synthetic ids and writes by generated id", async () => {
+  test("runNotebookWrite persists ids and writes by index on notebooks without ids", async () => {
     const fixture = await copyFixture("lovely-test-no-ids.ipynb");
 
     try {
-      await runNotebookWrite({ path: fixture.path, cellId: "generated-0", source: "# %matplotlib widget\n" });
+      const writeResult = await runNotebookWrite({ path: fixture.path, index: 0, source: "# %matplotlib widget\n" });
+      expect(writeResult.content[0]?.text).toMatch(new RegExp(`^Wrote cell index 0 in ${fixture.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`));
       const saved = await loadNotebook(fixture.path);
       expect(saved.nbformat_minor).toBe(5);
-      expect(saved.cells[0]?.id).toBe("generated-0");
-      expect(saved.cells[1]?.id).toBe("generated-1");
+      expect(saved.cells[0]?.id).toMatch(/^[0-9a-f]{8}$/);
+      expect(saved.cells[1]?.id).toMatch(/^[0-9a-f]{8}$/);
+      expect(Array.isArray(saved.cells[0]?.source)).toBe(true);
 
-      const result = await runNotebookRead({ path: fixture.path, cellId: "generated-0" });
-      expect(result.content[0]?.text).toBe('<cell index="0" id="generated-0" type="code" lines="2" n_exec="1" />\n# %matplotlib widget\n');
+      const result = await runNotebookRead({ path: fixture.path, startIndex: 0, endIndex: 0 });
+      expect(result.content[0]?.text).toBe('<notebook path="' + fixture.path + '" cells="1" />\n\n<cell index="0" id="' + saved.cells[0]?.id + '" type="code" lines="2" n_exec="1" />\n# %matplotlib widget\n');
     } finally {
       await fixture.cleanup();
     }
   });
 
-  test("runNotebookEdit works by generated id on notebooks without ids", async () => {
+  test("runNotebookEdit works by index on notebooks without ids", async () => {
     const fixture = await copyFixture("lovely-test-no-ids.ipynb");
 
     try {
       const result = await runNotebookEdit({
         path: fixture.path,
-        cellId: "generated-1",
+        index: 1,
         edits: [{ oldText: "import numpy as np", newText: "import numpy as numpy" }],
       });
-      expect(result.content[0]?.text).toBe(`Successfully replaced 1 block(s) in cell generated-1 of ${fixture.path}.`);
-      expect(readCellById(await loadNotebook(fixture.path), "generated-1").source).toContain("import numpy as numpy");
+      expect(result.content[0]?.text).toContain(`Successfully replaced 1 block(s) in cell index 1 of ${fixture.path}.`);
+      expect(result.content[0]?.text).toMatch(/Assigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$/);
+      expect(readAllCells(await loadNotebook(fixture.path))[1]?.source).toContain("import numpy as numpy");
     } finally {
       await fixture.cleanup();
     }
