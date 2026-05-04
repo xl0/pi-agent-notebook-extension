@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 import { loadNotebook, readCellById } from "../extensions/notebook/notebook"
-import { runNotebookInsert, runNotebookRead } from "../extensions/notebook/tools"
+import { runNotebookInsert, runNotebookReadCell } from "../extensions/notebook/tools"
 import { copyFixture, createTempNotebook, escapeForRegex } from "./helpers"
 
 test("runNotebookInsert returns concise confirmation and inserts readable cell", async () => {
@@ -17,8 +17,8 @@ test("runNotebookInsert returns concise confirmation and inserts readable cell",
 		const inserted = result.details as { id: string }
 		expect(result.content[0]?.text).toBe(`Inserted cell ${inserted.id} after 95cca932 in ${fixture.path}.`)
 
-		const readResult = await runNotebookRead({ path: fixture.path, cellId: inserted.id })
-		expect(readResult.content[0]?.text).toBe(`<cell index="5" id="${inserted.id}" type="md" lines="2" />\nInserted note\n`)
+		const readResult = await runNotebookReadCell({ path: fixture.path, cellId: inserted.id })
+		expect(readResult.content[0]?.text).toBe("Inserted note\n")
 	} finally {
 		await fixture.cleanup()
 	}

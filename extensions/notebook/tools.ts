@@ -1,10 +1,10 @@
+import { StringEnum } from "@mariozechner/pi-ai"
 import { type Static, Type } from "typebox"
 import {
 	clearCellOutputs,
 	deleteCell,
 	editCellSource,
 	ensureCellIds,
-	formatNotebookRead,
 	formatNotebookSummary,
 	insertCell,
 	loadNotebook,
@@ -12,8 +12,7 @@ import {
 	moveCell,
 	readAllCells,
 	readCellById,
-	readCellRange,
-	readCellsById,
+	sliceCellSource,
 	saveNotebook,
 	summarizeNotebook,
 	writeCellSource
@@ -23,27 +22,22 @@ export const notebookSummaryParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." })
 })
 
-export const notebookReadParams = Type.Object({
+export const notebookReadCellParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." }),
-	cellId: Type.Optional(Type.String({ description: "Single cell id to read." })),
-	cellIds: Type.Optional(
-		Type.Array(Type.String({ description: "Cell id to read." }), {
-			minItems: 1,
-			description: "Multiple cell ids to read in the given order."
-		})
-	),
-	startIndex: Type.Optional(Type.Integer({ description: "Inclusive start index for a cell range read." })),
-	endIndex: Type.Optional(Type.Integer({ description: "Inclusive end index for a cell range read." }))
+	cellId: Type.Optional(Type.String({ description: "Cell id to read." })),
+	index: Type.Optional(Type.Integer({ description: "Cell index to read." })),
+	lineOffset: Type.Optional(Type.Integer({ description: "Inclusive source line offset within the cell." })),
+	lineLimit: Type.Optional(Type.Integer({ description: "Maximum number of source lines to read from the offset." }))
 })
 
-export const notebookWriteParams = Type.Object({
+export const notebookWriteCellParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." }),
 	cellId: Type.Optional(Type.String({ description: "Cell id to replace." })),
 	index: Type.Optional(Type.Integer({ description: "Cell index to replace." })),
 	source: Type.String({ description: "New full cell source." })
 })
 
-export const notebookEditParams = Type.Object({
+export const notebookEditCellParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." }),
 	cellId: Type.Optional(Type.String({ description: "Cell id to edit." })),
 	index: Type.Optional(Type.Integer({ description: "Cell index to edit." })),
@@ -60,8 +54,8 @@ export const notebookInsertParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." }),
 	cellId: Type.Optional(Type.String({ description: "Anchor cell id." })),
 	index: Type.Optional(Type.Integer({ description: "Anchor cell index. Use -1 to append." })),
-	direction: Type.Union([Type.Literal("before"), Type.Literal("after")], { description: "Insert before or after the anchor." }),
-	type: Type.Union([Type.Literal("code"), Type.Literal("markdown"), Type.Literal("raw")], { description: "New cell type." }),
+	direction: StringEnum(["before", "after"] as const, { description: "Insert before or after the anchor." }),
+	type: StringEnum(["code", "markdown", "raw"] as const, { description: "New cell type." }),
 	source: Type.String({ description: "Source for the new cell." })
 })
 
@@ -77,7 +71,7 @@ export const notebookMoveParams = Type.Object({
 	index: Type.Optional(Type.Integer({ description: "Cell index to move." })),
 	targetCellId: Type.Optional(Type.String({ description: "Anchor cell id to move relative to." })),
 	targetIndex: Type.Optional(Type.Integer({ description: "Anchor cell index to move relative to. Use -1 for the end." })),
-	direction: Type.Union([Type.Literal("before"), Type.Literal("after")], {
+	direction: StringEnum(["before", "after"] as const, {
 		description: "Place the moved cell before or after the target."
 	})
 })
@@ -86,7 +80,7 @@ export const notebookMergeParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." }),
 	cellId: Type.Optional(Type.String({ description: "Anchor cell id to keep." })),
 	index: Type.Optional(Type.Integer({ description: "Anchor cell index to keep." })),
-	direction: Type.Union([Type.Literal("above"), Type.Literal("below")], { description: "Adjacent merge direction." })
+	direction: StringEnum(["above", "below"] as const, { description: "Adjacent merge direction." })
 })
 
 export const notebookClearOutputsParams = Type.Object({
@@ -96,9 +90,9 @@ export const notebookClearOutputsParams = Type.Object({
 })
 
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>
-export type NotebookReadParams = Static<typeof notebookReadParams>
-export type NotebookWriteParams = Static<typeof notebookWriteParams>
-export type NotebookEditParams = Static<typeof notebookEditParams>
+export type NotebookReadCellParams = Static<typeof notebookReadCellParams>
+export type NotebookWriteCellParams = Static<typeof notebookWriteCellParams>
+export type NotebookEditCellParams = Static<typeof notebookEditCellParams>
 export type NotebookInsertParams = Static<typeof notebookInsertParams>
 export type NotebookDeleteParams = Static<typeof notebookDeleteParams>
 export type NotebookMoveParams = Static<typeof notebookMoveParams>
@@ -137,34 +131,18 @@ export async function runNotebookSummary(params: NotebookSummaryParams): Promise
 	}
 }
 
-export async function runNotebookRead(params: NotebookReadParams): Promise<NotebookToolResult> {
+export async function runNotebookReadCell(params: NotebookReadCellParams): Promise<NotebookToolResult> {
 	const notebook = await loadNotebook(params.path)
-	const selectors = [
-		params.cellId !== undefined,
-		params.cellIds !== undefined,
-		params.startIndex !== undefined || params.endIndex !== undefined
-	].filter(Boolean).length
-
-	if (selectors > 1) throw new Error("Provide at most one read selector: cellId, cellIds, or startIndex/endIndex")
-	if ((params.startIndex === undefined) !== (params.endIndex === undefined)) {
-		throw new Error("Provide both startIndex and endIndex for range reads")
-	}
-
-	const result =
-		params.cellId !== undefined
-			? readCellById(notebook, params.cellId)
-			: params.cellIds !== undefined
-				? readCellsById(notebook, params.cellIds)
-				: params.startIndex !== undefined
-					? readCellRange(notebook, params.startIndex, params.endIndex as number)
-					: readAllCells(notebook)
+	const selector = requireSingleCellSelector(params.cellId, params.index)
+	const result = typeof selector === "string" ? readCellById(notebook, selector) : requireReadCellAtIndex(notebook, selector)
+	const text = sliceCellSource(result.source, params.lineOffset, params.lineLimit)
 	return {
-		content: [{ type: "text", text: formatNotebookRead(params.path, result) }],
+		content: [{ type: "text", text }],
 		details: result
 	}
 }
 
-export async function runNotebookWrite(params: NotebookWriteParams): Promise<NotebookToolResult> {
+export async function runNotebookWriteCell(params: NotebookWriteCellParams): Promise<NotebookToolResult> {
 	const notebook = await loadNotebook(params.path)
 	const selector = requireSingleCellSelector(params.cellId, params.index)
 	const assigned = ensureCellIds(notebook)
@@ -182,7 +160,7 @@ export async function runNotebookWrite(params: NotebookWriteParams): Promise<Not
 	}
 }
 
-export async function runNotebookEdit(params: NotebookEditParams): Promise<NotebookToolResult> {
+export async function runNotebookEditCell(params: NotebookEditCellParams): Promise<NotebookToolResult> {
 	const notebook = await loadNotebook(params.path)
 	const selector = requireSingleCellSelector(params.cellId, params.index)
 	const assigned = ensureCellIds(notebook)
@@ -298,9 +276,9 @@ export async function runNotebookClearOutputs(params: NotebookClearOutputsParams
 
 export const notebookToolRunners = {
 	notebook_summary: runNotebookSummary,
-	notebook_read: runNotebookRead,
-	notebook_write: runNotebookWrite,
-	notebook_edit: runNotebookEdit,
+	notebook_read_cell: runNotebookReadCell,
+	notebook_write_cell: runNotebookWriteCell,
+	notebook_edit_cell: runNotebookEditCell,
 	notebook_insert: runNotebookInsert,
 	notebook_delete: runNotebookDelete,
 	notebook_move: runNotebookMove,

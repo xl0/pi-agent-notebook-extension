@@ -10,7 +10,7 @@ test("runNotebookClearOutputs returns concise confirmation and clears outputs", 
 		const result = await runNotebookClearOutputs({ path: fixture.path, cellId: "95cca932" })
 		expect(result.content[0]?.text).toBe(`Cleared outputs for cell 95cca932 in ${fixture.path}.`)
 		const summary = await runNotebookSummary({ path: fixture.path })
-		expect(summary.content[0]?.text).toContain("4 id=95cca932 type=code lines=3 outputs=0")
+		expect(summary.content[0]?.text).toContain('<cell index="4" id="95cca932" type="code" lines="3" outputs="0" />')
 	} finally {
 		await fixture.cleanup()
 	}
@@ -29,8 +29,8 @@ test("runNotebookClearOutputs works by index on notebooks without ids and preser
 		const saved = await loadNotebook(fixture.path)
 		expect(readAllCells(saved)[1]?.executionCount).toBe(2)
 		const summary = await runNotebookSummary({ path: fixture.path })
-		expect(summary.content[0]?.text).toContain("1 id=")
-		expect(summary.content[0]?.text).toContain("n_exec=2 outputs=0")
+		expect(summary.content[0]?.text).toContain('<cell index="1" id="')
+		expect(summary.content[0]?.text).toContain('n_exec="2" outputs="0"')
 	} finally {
 		await fixture.cleanup()
 	}

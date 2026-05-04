@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test"
-import { runNotebookMerge, runNotebookRead } from "../extensions/notebook/tools"
+import { runNotebookMerge, runNotebookReadCell } from "../extensions/notebook/tools"
 import { copyFixture, escapeForRegex } from "./helpers"
 
 test("runNotebookMerge returns concise confirmation and merged source", async () => {
@@ -8,7 +8,7 @@ test("runNotebookMerge returns concise confirmation and merged source", async ()
 	try {
 		const result = await runNotebookMerge({ path: fixture.path, cellId: "ffd208cf", direction: "below" })
 		expect(result.content[0]?.text).toBe(`Merged cell 95cca932 into ffd208cf in ${fixture.path}.`)
-		const readResult = await runNotebookRead({ path: fixture.path, cellId: "ffd208cf" })
+		const readResult = await runNotebookReadCell({ path: fixture.path, cellId: "ffd208cf" })
 		expect(readResult.content[0]?.text).toContain("torch.cuda.memory_allocated()\n# |eval: false")
 	} finally {
 		await fixture.cleanup()
@@ -25,7 +25,7 @@ test("runNotebookMerge works by index on notebooks without ids", async () => {
 				`^Merged cell [0-9a-f]{8} into index 0 in ${escapeForRegex(fixture.path)}\\.\\nAssigned ids in .*: 0=[0-9a-f]{8} 1=[0-9a-f]{8}$`
 			)
 		)
-		const readResult = await runNotebookRead({ path: fixture.path, startIndex: 0, endIndex: 0 })
+		const readResult = await runNotebookReadCell({ path: fixture.path, index: 0 })
 		expect(readResult.content[0]?.text).toContain("# %matplotlib inline\n#!/usr/bin/env python3")
 	} finally {
 		await fixture.cleanup()

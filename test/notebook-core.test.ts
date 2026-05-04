@@ -8,7 +8,6 @@ import {
 	deleteCell,
 	editCellSource,
 	ensureCellIds,
-	formatNotebookRead,
 	formatNotebookSummary,
 	insertCell,
 	loadNotebook,
@@ -20,6 +19,7 @@ import {
 	readCellById,
 	readCellRange,
 	readCellsById,
+	sliceCellSource,
 	saveNotebook,
 	summarizeNotebook,
 	writeCellSource
@@ -39,7 +39,10 @@ describe("notebook core", () => {
 			id: "intro",
 			type: "markdown",
 			sourceLines: 3,
-			preview: "# Title\\nMore text\\n"
+			preview: "# Title\nMore text\n",
+			previewLines: 2,
+			previewTruncated: false,
+			previewRemainingLines: 0
 		})
 		expect(summary.cells[1]?.outputCount).toBe(1)
 	})
@@ -195,12 +198,12 @@ describe("notebook core", () => {
 		expect(() => clearCellOutputs(notebook, "intro")).toThrow("Cell is not code: intro")
 	})
 
-	test("formatNotebookSummary uses sparse key value rows", () => {
+	test("formatNotebookSummary uses xml-ish cell headers plus raw previews", () => {
 		const summary = summarizeNotebook("demo.ipynb", parseNotebook(createNotebookText()))
 		const formatted = formatNotebookSummary(summary)
 		expect(formatted).toContain("meta nbformat=4.5 kernel=python3 cells=2 language=python")
-		expect(formatted).toContain('0 id=intro type=md lines=3 preview="# Title\\nMore text\\n"')
-		expect(formatted).toContain('1 id=code-1 type=code lines=3 n_exec=7 outputs=1 preview="print(1)\\nprint(2)\\n"')
+		expect(formatted).toContain('<cell index="0" id="intro" type="md" lines="3" />\n# Title\nMore text\n')
+		expect(formatted).toContain('<cell index="1" id="code-1" type="code" lines="3" n_exec="7" outputs="1" />\nprint(1)\nprint(2)\n')
 	})
 
 	test("summary handles missing metadata and missing source", () => {
@@ -224,21 +227,29 @@ describe("notebook core", () => {
 					id: "a",
 					type: "markdown",
 					sourceLines: 0,
-					preview: ""
+					preview: "",
+					previewLines: 0,
+					previewTruncated: false,
+					previewRemainingLines: 0
 				}
 			]
 		})
 	})
 
-	test("summary preview truncates long source with ellipsis", () => {
+	test("summary preview truncates after 5 lines and adds remaining-lines marker", () => {
 		const notebook = parseNotebook(
 			JSON.stringify({
 				nbformat: 4,
 				nbformat_minor: 5,
-				cells: [{ cell_type: "markdown", id: "a", source: "x".repeat(130) }]
+				cells: [{ cell_type: "markdown", id: "a", source: ["one\n", "two\n", "three\n", "four\n", "five\n", "six\n"] }]
 			})
 		)
-		expect(summarizeNotebook("long.ipynb", notebook).cells[0]?.preview).toBe(`${"x".repeat(120)}...`)
+		const summary = summarizeNotebook("long.ipynb", notebook)
+		expect(summary.cells[0]?.preview).toBe("one\ntwo\nthree\nfour\nfive\n[1 more lines]")
+		expect(summary.cells[0]?.previewLines).toBe(5)
+		expect(summary.cells[0]?.previewTruncated).toBe(true)
+		expect(summary.cells[0]?.previewRemainingLines).toBe(1)
+		expect(formatNotebookSummary(summary)).toContain("five\n[1 more lines]")
 	})
 
 	test("saveNotebook writes deterministic json with trailing newline", async () => {
@@ -283,19 +294,18 @@ describe("notebook core", () => {
 		expect(summary.cells.some(cell => cell.outputCount === 1)).toBe(true)
 	})
 
-	test("formatNotebookRead emits notebook header and raw cell blocks", async () => {
-		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"))
-		const formatted = formatNotebookRead("lovely-history.ipynb", readAllCells(notebook))
-		expect(formatted).toContain('<notebook path="lovely-history.ipynb" cells="12" />')
-		expect(formatted).toContain('<cell index="4" id="95cca932" type="code" lines="3" />')
-		expect(formatted).toContain('t = torch.tensor(10, device="cuda")')
-		expect(formatted).toContain("deleted it.\\\nI did not use Lovely Tensors")
+	test("sliceCellSource slices raw source by line", () => {
+		const source = "a\nb\nc\n"
+		expect(sliceCellSource(source)).toBe(source)
+		expect(sliceCellSource(source, 1, 1)).toBe("b\n[1 more lines. Use offset=2 to continue.]")
+		expect(() => sliceCellSource(source, -1)).toThrow("Invalid lineOffset: -1")
+		expect(() => sliceCellSource(source, 0, -1)).toThrow("Invalid lineLimit: -1")
 	})
 
 	test("summary omits null execution counts from formatted rows", async () => {
 		const notebook = await loadNotebook(join(FIXTURE_DIR, "lovely-history.ipynb"))
 		const formatted = formatNotebookSummary(summarizeNotebook("lovely-history.ipynb", notebook))
-		expect(formatted).toContain("1 id=57d6942b type=code lines=3 outputs=0")
+		expect(formatted).toContain('<cell index="1" id="57d6942b" type="code" lines="3" outputs="0" />')
 		expect(formatted).not.toContain("n_exec=null")
 	})
 
@@ -304,7 +314,7 @@ describe("notebook core", () => {
 		const summary = summarizeNotebook("lovely-history.ipynb", notebook)
 		const preview = summary.cells[7]?.preview ?? ""
 		const start = preview.indexOf("deleted it.")
-		expect(preview.slice(start, start + 15)).toBe("deleted it.\\\\\\n")
+		expect(preview.slice(start, start + 11)).toBe("deleted it.")
 	})
 
 	test("ensureCellIds assigns short random ids and bumps minor version", async () => {

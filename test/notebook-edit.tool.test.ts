@@ -1,13 +1,13 @@
 import { expect, test } from "bun:test"
 import { loadNotebook, readAllCells } from "../extensions/notebook/notebook"
-import { runNotebookEdit } from "../extensions/notebook/tools"
+import { runNotebookEditCell } from "../extensions/notebook/tools"
 import { copyFixture } from "./helpers"
 
-test("runNotebookEdit works by index on notebooks without ids", async () => {
+test("runNotebookEditCell works by index on notebooks without ids", async () => {
 	const fixture = await copyFixture("lovely-test-no-ids.ipynb")
 
 	try {
-		const result = await runNotebookEdit({
+		const result = await runNotebookEditCell({
 			path: fixture.path,
 			index: 1,
 			edits: [{ oldText: "import numpy as np", newText: "import numpy as numpy" }]

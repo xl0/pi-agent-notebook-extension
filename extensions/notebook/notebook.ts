@@ -37,6 +37,9 @@ export interface NotebookCellSummary {
 	type: string
 	sourceLines: number
 	preview: string
+	previewLines: number
+	previewTruncated: boolean
+	previewRemainingLines: number
 	executionCount?: number | null
 	outputCount?: number
 }
@@ -125,9 +128,14 @@ function sourceToLines(source: string): string[] {
 	return source.match(/[^\n]*\n|[^\n]+/g) ?? []
 }
 
-function previewSource(source: string): string {
-	const escaped = source.replaceAll("\\", "\\\\").replaceAll("\n", "\\n")
-	return escaped.length > 120 ? `${escaped.slice(0, 120)}...` : escaped
+function previewSource(source: string): { text: string; lines: number; truncated: boolean; remainingLines: number } {
+	const maxLines = 5
+	const lines = sourceToLines(source)
+	const shownLines = lines.slice(0, maxLines)
+	const truncated = lines.length > maxLines
+	const remainingLines = Math.max(0, lines.length - shownLines.length)
+	const text = truncated ? `${shownLines.join("").replace(/\n?$/, "")}\n[${remainingLines} more lines]` : shownLines.join("")
+	return { text, lines: shownLines.length, truncated, remainingLines }
 }
 
 function joinCellSources(a: string, b: string): string {
@@ -136,9 +144,6 @@ function joinCellSources(a: string, b: string): string {
 	return `${a}\n${b}`
 }
 
-function quotePreview(text: string): string {
-	return `"${text.replaceAll('"', '\\"')}"`
-}
 
 function sourceLineCount(source: string): number {
 	if (source.length === 0) return 0
@@ -237,12 +242,16 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
 			const id = storedCellId(cell)
 			const executionCount = cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined
 			const outputCount = cell.cell_type === "code" ? (Array.isArray(cell.outputs) ? cell.outputs.length : 0) : undefined
+			const preview = previewSource(source)
 			return {
 				index,
 				...(id === undefined ? {} : { id }),
 				type: cell.cell_type,
 				sourceLines: sourceLineCount(source),
-				preview: previewSource(source),
+				preview: preview.text,
+				previewLines: preview.lines,
+				previewTruncated: preview.truncated,
+				previewRemainingLines: preview.remainingLines,
 				...(executionCount === undefined ? {} : { executionCount }),
 				...(outputCount === undefined ? {} : { outputCount })
 			}
@@ -258,46 +267,37 @@ export function formatNotebookSummary(summary: NotebookSummary): string {
 	]
 	if (summary.language) metadata.push(`language=${summary.language}`)
 
-	const lines = [
-		`meta ${metadata.join(" ")}`,
-		...summary.cells.map(cell => {
-			const parts = [String(cell.index), `type=${cell.type === "markdown" ? "md" : cell.type}`, `lines=${cell.sourceLines}`]
-			if (cell.id) parts.splice(1, 0, `id=${cell.id}`)
-			if (cell.executionCount !== undefined && cell.executionCount !== null) parts.push(`n_exec=${cell.executionCount}`)
-			if (cell.outputCount !== undefined) parts.push(`outputs=${cell.outputCount}`)
-			parts.push(`preview=${quotePreview(cell.preview)}`)
-			return parts.join(" ")
-		})
-	]
+	const lines = [`meta ${metadata.join(" ")}`]
+
+	for (const cell of summary.cells) {
+		const attrs = [
+			`index=${quoteAttribute(String(cell.index))}`,
+			`type=${quoteAttribute(cell.type === "markdown" ? "md" : cell.type)}`,
+			`lines=${quoteAttribute(String(cell.sourceLines))}`
+		]
+		if (cell.id) attrs.splice(1, 0, `id=${quoteAttribute(cell.id)}`)
+		if (cell.executionCount !== undefined && cell.executionCount !== null) attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`)
+		if (cell.outputCount !== undefined) attrs.push(`outputs=${quoteAttribute(String(cell.outputCount))}`)
+		lines.push(`<cell ${attrs.join(" ")} />`)
+		if (cell.preview.length > 0) lines.push(cell.preview)
+	}
 
 	return lines.join("\n")
 }
 
-export function formatNotebookRead(path: string, cells: NotebookReadCell | NotebookReadCell[]): string {
-	const list = Array.isArray(cells) ? cells : [cells]
-	const lines: string[] = []
-
-	if (Array.isArray(cells)) {
-		lines.push(`<notebook path=${quoteAttribute(path)} cells=${quoteAttribute(String(list.length))} />`)
-		lines.push("")
+export function sliceCellSource(source: string, lineOffset = 0, lineLimit?: number): string {
+	if (!Number.isInteger(lineOffset) || lineOffset < 0) throw new Error(`Invalid lineOffset: ${lineOffset}`)
+	if (lineLimit !== undefined && (!Number.isInteger(lineLimit) || lineLimit < 0)) {
+		throw new Error(`Invalid lineLimit: ${lineLimit}`)
 	}
-
-	for (const [index, cell] of list.entries()) {
-		const attrs = [
-			`index=${quoteAttribute(String(cell.index))}`,
-			`type=${quoteAttribute(cell.type === "markdown" ? "md" : cell.type)}`,
-			`lines=${quoteAttribute(String(sourceLineCount(cell.source)))}`
-		]
-		if (cell.id) attrs.splice(1, 0, `id=${quoteAttribute(cell.id)}`)
-		if (cell.executionCount !== undefined && cell.executionCount !== null) {
-			attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`)
-		}
-		lines.push(`<cell ${attrs.join(" ")} />`)
-		lines.push(cell.source)
-		if (index < list.length - 1) lines.push("")
-	}
-
-	return lines.join("\n")
+	const lines = sourceToLines(source)
+	if (lineOffset > lines.length) throw new Error(`lineOffset out of range: ${lineOffset}`)
+	const sliced = lines.slice(lineOffset, lineLimit === undefined ? undefined : lineOffset + lineLimit)
+	const text = sliced.join("")
+	const remainingLines = Math.max(0, lines.length - (lineOffset + sliced.length))
+	if (lineLimit === undefined || remainingLines === 0) return text
+	const continuation = `[${remainingLines} more lines. Use offset=${lineOffset + sliced.length} to continue.]`
+	return text.length === 0 ? continuation : `${text}${text.endsWith("\n") ? "" : "\n"}${continuation}`
 }
 
 export function readAllCells(notebook: Notebook): NotebookReadCell[] {

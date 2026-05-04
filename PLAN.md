@@ -22,7 +22,7 @@
   - default to `cellId` when present
   - allow index-based addressing for no-id notebooks and placement operations
   - one-cell-at-a-time for write/edit/insert/delete/move/merge/clear_outputs
-  - write/edit/delete/merge/clear_outputs support exactly one selector: `cellId` or `index`
+  - write_cell/edit_cell/delete/merge/clear_outputs support exactly one selector: `cellId` or `index`
   - move supports exactly one source selector: `cellId` or `index`
   - move also requires exactly one target selector: `targetCellId` or `targetIndex`, plus `direction: before|after`
   - `notebook_insert` supports exactly one anchor selector: `cellId` or `index`; `index=-1` appends
@@ -36,11 +36,12 @@
 - Read policy:
   - concise summary tool
   - summary output should always show `index` and should show `cellId` only when present in the notebook
-  - summary output should prefer sparse key=value rows over dense CSV
-  - summary preview should show escaped source snippets compactly, truncated with `...` when needed
-  - summary/read formatting must preserve literal notebook backslashes in source; summary previews should escape them explicitly
-  - read output should use XML-ish metadata headers plus raw source blocks
-  - read supports full notebook, one `cellId`, multiple `cellIds`, or an inclusive `startIndex`/`endIndex` range
+  - summary output should use pseudo-XML cell headers
+  - summary preview should be raw source text after each header, truncated after 5 lines with a trailing `[N more lines]` line when needed
+  - summary/read formatting must preserve literal notebook source text
+  - read_cell supports exactly one selector: `cellId` or `index`
+  - read_cell may optionally slice source with `lineOffset`/`lineLimit`
+  - read_cell text output is raw cell source only; truncated reads append `[N more lines. Use offset=M to continue.]`
 - Move/insert/merge semantics:
   - move: place one cell before or after another cell by id or index; `targetIndex=-1` means the end
   - insert: anchor by `cellId` or `index`, plus `direction: before|after`
@@ -75,11 +76,11 @@
 - [x] Read-only notebook support
   - [x] Implement notebook parse/summary/read core
   - [x] Implement `notebook_summary`
-  - [x] Implement `notebook_read`
+  - [x] Implement `notebook_read_cell`
 - [~] Cell source mutation support
   - [x] Implement load/save mutation path
-  - [x] Implement `notebook_write`
-  - [x] Implement `notebook_edit`
+  - [x] Implement `notebook_write_cell`
+  - [x] Implement `notebook_edit_cell`
   - [x] Define/implement cell id normalization helpers
 - [x] Structural notebook operations
   - [x] Implement `notebook_insert`
@@ -87,10 +88,11 @@
   - [x] Implement `notebook_move`
   - [x] Implement `notebook_merge`
   - [x] Implement `notebook_clear_outputs`
-  - [x] Expand `notebook_read` to multi/range selectors
+  - [x] Simplify read to single-cell `notebook_read_cell` with optional line slicing
 - [~] Verification
   - [x] Add tests for existing parse/read/write/edit operations
   - [x] Add real `.ipynb` fixture coverage for current behavior
   - [x] Add tests for remaining mutation operations
   - [x] Split tests by layer/tool/workflow for maintainability
+  - [x] Keep `bun test` green after TS/Biome tightening
   - [~] Verify current tools on real notebooks through Pi / local runner

@@ -7,13 +7,16 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Repo root is now the Pi package.
 - `package.json` declares a Pi package via `pi.extensions: ["./extensions"]`.
 - Main extension entry: `extensions/notebook/index.ts`.
+  - every notebook tool now has a short prompt snippet for discoverability
+  - shared notebook-tool semantics live once on `notebook_summary` as namespaced guidelines, so deduped system-prompt guidance keeps notebook scope clear
 - Pure notebook logic lives in `extensions/notebook/notebook.ts`.
 - Shared tool runners + schemas live in `extensions/notebook/tools.ts`.
+  - string-valued enum parameters use Pi-recommended `StringEnum` schemas so providers see `type: "string"` plus `enum`, not `anyOf`/`const` unions
 - Implemented tools:
   - `notebook_summary({ path })`
-  - `notebook_read({ path, cellId?, cellIds?, startIndex?, endIndex? })`
-  - `notebook_write({ path, cellId?|index?, source })`
-  - `notebook_edit({ path, cellId?|index?, edits })`
+  - `notebook_read_cell({ path, cellId?|index?, lineOffset?, lineLimit? })`
+  - `notebook_write_cell({ path, cellId?|index?, source })`
+  - `notebook_edit_cell({ path, cellId?|index?, edits })`
   - `notebook_insert({ path, cellId?|index?, direction, type, source })`
   - `notebook_delete({ path, cellId?|index? })`
   - `notebook_move({ path, cellId?|index?, targetCellId?|targetIndex?, direction })`
@@ -21,14 +24,15 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `notebook_clear_outputs({ path, cellId?|index? })`
 - Current notebook support:
   - parse notebook JSON directly; require `nbformat === 4`
-  - summarize kernel/language/cells via one `meta` line plus sparse per-cell key=value rows
+  - summarize kernel/language/cells via one `meta` line plus one pseudo-XML cell header per cell
   - summary/read omit `id` when the notebook cell has no stored id
-  - code rows include `n_exec` only when execution count is present
-  - summary preview is first 120 source chars with escaped backslashes/newlines and `...` when truncated
-  - read all cells, one cell by id, multiple ids, or an inclusive index range
+  - code cell summary headers include `n_exec` only when execution count is present
+  - summary preview is raw source text after each cell header, hard-limited to 5 lines; when truncated, it ends with a final `[N more lines]` line
+  - read one cell by id or index, optionally slicing source by line offset/limit; truncated reads append `[N more lines. Use offset=M to continue.]`
+  - read tool text output is raw cell source only; cell metadata stays in tool `details` and in `notebook_summary`
+  - source mutation tools are explicitly cell-scoped by name: `notebook_read_cell`, `notebook_write_cell`, `notebook_edit_cell`
   - mutation tools accept id selectors for notebooks that already have ids, and index selectors for notebooks that do not
   - first mutation on a no-id notebook assigns short random 8-hex ids to all cells, bumps `nbformat_minor` to `5` when needed, and appends a concise index→id mapping to tool output
-  - read output uses XML-ish headers plus raw source blocks, not JSON-escaped source
   - write/edit preserve other cell fields like metadata/outputs and return concise confirmation text
   - insert one code/markdown/raw cell before or after an anchor cell id or index; `index=-1` appends
   - move one cell before or after another cell by id or index
@@ -39,6 +43,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `test/notebook-core.test.ts` covers parse/validation, pure cell ops, formatting helpers, id assignment, load/save roundtrips, save formatting, and fixture-level core behavior
   - `test/notebook-*.tool.test.ts` keeps one file per tool for runner/output/selector behavior
   - `test/notebook-*.workflow.test.ts` keeps one file per multi-step workflow (write→read parity, no-id mutation flow, real-fixture edit/save)
+  - current suite passes under `bun test` (62 tests)
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 - Biome config lives in `biome.json`.
   - schema migrated to match installed CLI `2.4.14`
