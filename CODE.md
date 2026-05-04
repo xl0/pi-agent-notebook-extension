@@ -28,6 +28,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - summary/read omit `id` when the notebook cell has no stored id
   - code cell summary headers include `n_exec` only when execution count is present
   - summary preview is raw source text after each cell header, hard-limited to 5 lines; when truncated, it ends with a final `[N more lines]` line
+  - summary now includes per-output pseudo-XML headers after each cell preview; output headers include `cell_id` when present, else `cell_index`, rich outputs are flattened to one header per MIME variant, and only text-like variants include up to 5 preview lines
   - read one cell by id or index, optionally slicing source by line offset/limit; truncated reads append `[N more lines. Use offset=M to continue.]`
   - read tool text output is raw cell source only; cell metadata stays in tool `details` and in `notebook_summary`
   - source mutation tools are explicitly cell-scoped by name: `notebook_read_cell`, `notebook_write_cell`, `notebook_edit_cell`

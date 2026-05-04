@@ -31,6 +31,19 @@ export interface Notebook {
 	[key: string]: unknown
 }
 
+export interface NotebookOutputSummary {
+	index: number
+	type: string
+	name?: string
+	mime?: string
+	ename?: string
+	executionCount?: number | null
+	preview: string
+	previewLines: number
+	previewTruncated: boolean
+	previewRemainingLines: number
+}
+
 export interface NotebookCellSummary {
 	index: number
 	id?: string
@@ -42,6 +55,7 @@ export interface NotebookCellSummary {
 	previewRemainingLines: number
 	executionCount?: number | null
 	outputCount?: number
+	outputs?: NotebookOutputSummary[]
 }
 
 export interface NotebookSummary {
@@ -103,6 +117,16 @@ type RawCell = RawObject & {
 	cell_type?: unknown
 }
 
+type RawOutput = RawObject & {
+	output_type?: unknown
+	name?: unknown
+	text?: unknown
+	data?: unknown
+	ename?: unknown
+	execution_count?: unknown
+	traceback?: unknown
+}
+
 function isObject(value: unknown): value is RawObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -138,12 +162,79 @@ function previewSource(source: string): { text: string; lines: number; truncated
 	return { text, lines: shownLines.length, truncated, remainingLines }
 }
 
+function normalizeOutputText(value: unknown): string {
+	if (typeof value === "string") return value
+	if (Array.isArray(value) && value.every(part => typeof part === "string")) return value.join("")
+	return ""
+}
+
+function isTextLikeMime(mime: string): boolean {
+	return mime.startsWith("text/") || mime === "application/json"
+}
+
+function summarizeOutput(output: unknown, index: number): NotebookOutputSummary[] {
+	const raw = isObject(output) ? (output as RawOutput) : {}
+	const type = typeof raw.output_type === "string" ? raw.output_type : "unknown"
+	const base = {
+		index,
+		type,
+		...(typeof raw.name === "string" ? { name: raw.name } : {}),
+		...(typeof raw.ename === "string" ? { ename: raw.ename } : {}),
+		...(typeof raw.execution_count === "number" || raw.execution_count === null ? { executionCount: raw.execution_count } : {})
+	}
+
+	if (type === "stream") {
+		const preview = previewSource(normalizeOutputText(raw.text))
+		return [
+			{
+				...base,
+				preview: preview.text,
+				previewLines: preview.lines,
+				previewTruncated: preview.truncated,
+				previewRemainingLines: preview.remainingLines
+			}
+		]
+	}
+
+	if ((type === "display_data" || type === "execute_result") && isObject(raw.data)) {
+		return Object.entries(raw.data).map(([mime, value]) => {
+			const text = isTextLikeMime(mime) ? normalizeOutputText(value) : ""
+			const preview = previewSource(text)
+			return {
+				...base,
+				mime,
+				preview: preview.text,
+				previewLines: preview.lines,
+				previewTruncated: preview.truncated,
+				previewRemainingLines: preview.remainingLines
+			}
+		})
+	}
+
+	if (type === "error") {
+		const traceback = Array.isArray(raw.traceback) ? raw.traceback.filter((line): line is string => typeof line === "string") : []
+		let text = traceback.join("\n")
+		if (text.length > 0 && !text.endsWith("\n")) text += "\n"
+		const preview = previewSource(text)
+		return [
+			{
+				...base,
+				preview: preview.text,
+				previewLines: preview.lines,
+				previewTruncated: preview.truncated,
+				previewRemainingLines: preview.remainingLines
+			}
+		]
+	}
+
+	return [{ ...base, preview: "", previewLines: 0, previewTruncated: false, previewRemainingLines: 0 }]
+}
+
 function joinCellSources(a: string, b: string): string {
 	if (a.length === 0 || b.length === 0) return `${a}${b}`
 	if (a.endsWith("\n") || b.startsWith("\n")) return `${a}${b}`
 	return `${a}\n${b}`
 }
-
 
 function sourceLineCount(source: string): number {
 	if (source.length === 0) return 0
@@ -241,6 +332,7 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
 			const source = normalizeSource(cell.source)
 			const id = storedCellId(cell)
 			const executionCount = cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined
+			const outputs = cell.cell_type === "code" && Array.isArray(cell.outputs) ? cell.outputs.flatMap(summarizeOutput) : undefined
 			const outputCount = cell.cell_type === "code" ? (Array.isArray(cell.outputs) ? cell.outputs.length : 0) : undefined
 			const preview = previewSource(source)
 			return {
@@ -253,7 +345,8 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
 				previewTruncated: preview.truncated,
 				previewRemainingLines: preview.remainingLines,
 				...(executionCount === undefined ? {} : { executionCount }),
-				...(outputCount === undefined ? {} : { outputCount })
+				...(outputCount === undefined ? {} : { outputCount }),
+				...(outputs === undefined ? {} : { outputs })
 			}
 		})
 	}
@@ -276,10 +369,26 @@ export function formatNotebookSummary(summary: NotebookSummary): string {
 			`lines=${quoteAttribute(String(cell.sourceLines))}`
 		]
 		if (cell.id) attrs.splice(1, 0, `id=${quoteAttribute(cell.id)}`)
-		if (cell.executionCount !== undefined && cell.executionCount !== null) attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`)
+		if (cell.executionCount !== undefined && cell.executionCount !== null)
+			attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`)
 		if (cell.outputCount !== undefined) attrs.push(`outputs=${quoteAttribute(String(cell.outputCount))}`)
 		lines.push(`<cell ${attrs.join(" ")} />`)
 		if (cell.preview.length > 0) lines.push(cell.preview)
+		for (const output of cell.outputs ?? []) {
+			const outputAttrs = [
+				cell.id ? `cell_id=${quoteAttribute(cell.id)}` : `cell_index=${quoteAttribute(String(cell.index))}`,
+				`index=${quoteAttribute(String(output.index))}`,
+				`type=${quoteAttribute(output.type)}`
+			]
+			if (output.name) outputAttrs.push(`name=${quoteAttribute(output.name)}`)
+			if (output.mime) outputAttrs.push(`mime=${quoteAttribute(output.mime)}`)
+			if (output.ename) outputAttrs.push(`ename=${quoteAttribute(output.ename)}`)
+			if (output.executionCount !== undefined && output.executionCount !== null) {
+				outputAttrs.push(`n_exec=${quoteAttribute(String(output.executionCount))}`)
+			}
+			lines.push(`<output ${outputAttrs.join(" ")} />`)
+			if (output.preview.length > 0) lines.push(output.preview)
+		}
 	}
 
 	return lines.join("\n")

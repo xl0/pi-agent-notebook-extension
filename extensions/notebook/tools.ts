@@ -12,8 +12,8 @@ import {
 	moveCell,
 	readAllCells,
 	readCellById,
-	sliceCellSource,
 	saveNotebook,
+	sliceCellSource,
 	summarizeNotebook,
 	writeCellSource
 } from "./notebook"

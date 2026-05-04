@@ -36,8 +36,9 @@
 - Read policy:
   - concise summary tool
   - summary output should always show `index` and should show `cellId` only when present in the notebook
-  - summary output should use pseudo-XML cell headers
-  - summary preview should be raw source text after each header, truncated after 5 lines with a trailing `[N more lines]` line when needed
+  - summary output should use pseudo-XML cell and output headers, with `cell_id` when present else `cell_index` on outputs, and one output header per MIME variant
+  - only text-like output variants should include preview text
+  - summary preview should be raw source text after each cell/output header, truncated after 5 lines with a trailing `[N more lines]` line when needed
   - summary/read formatting must preserve literal notebook source text
   - read_cell supports exactly one selector: `cellId` or `index`
   - read_cell may optionally slice source with `lineOffset`/`lineLimit`

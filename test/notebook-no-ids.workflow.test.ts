@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test"
 import { loadNotebook } from "../extensions/notebook/notebook"
-import { runNotebookEditCell, runNotebookInsert, runNotebookMove, runNotebookReadCell, runNotebookWriteCell } from "../extensions/notebook/tools"
+import {
+	runNotebookEditCell,
+	runNotebookInsert,
+	runNotebookMove,
+	runNotebookReadCell,
+	runNotebookWriteCell
+} from "../extensions/notebook/tools"
 import { copyFixture } from "./helpers"
 
 test("no-id notebook can be mutated across tools after id assignment", async () => {
@@ -8,7 +14,11 @@ test("no-id notebook can be mutated across tools after id assignment", async () 
 
 	try {
 		await runNotebookWriteCell({ path: fixture.path, index: 0, source: "# %matplotlib widget\n" })
-		await runNotebookEditCell({ path: fixture.path, index: 1, edits: [{ oldText: "import numpy as np", newText: "import numpy as numpy" }] })
+		await runNotebookEditCell({
+			path: fixture.path,
+			index: 1,
+			edits: [{ oldText: "import numpy as np", newText: "import numpy as numpy" }]
+		})
 		const insertResult = await runNotebookInsert({
 			path: fixture.path,
 			index: 0,

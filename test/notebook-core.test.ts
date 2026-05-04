@@ -19,8 +19,8 @@ import {
 	readCellById,
 	readCellRange,
 	readCellsById,
-	sliceCellSource,
 	saveNotebook,
+	sliceCellSource,
 	summarizeNotebook,
 	writeCellSource
 } from "../extensions/notebook/notebook"
@@ -45,6 +45,16 @@ describe("notebook core", () => {
 			previewRemainingLines: 0
 		})
 		expect(summary.cells[1]?.outputCount).toBe(1)
+		expect(summary.cells[1]?.outputs).toEqual([
+			{
+				index: 0,
+				type: "stream",
+				preview: "",
+				previewLines: 0,
+				previewTruncated: false,
+				previewRemainingLines: 0
+			}
+		])
 	})
 
 	test("read cells", () => {
@@ -203,7 +213,8 @@ describe("notebook core", () => {
 		const formatted = formatNotebookSummary(summary)
 		expect(formatted).toContain("meta nbformat=4.5 kernel=python3 cells=2 language=python")
 		expect(formatted).toContain('<cell index="0" id="intro" type="md" lines="3" />\n# Title\nMore text\n')
-		expect(formatted).toContain('<cell index="1" id="code-1" type="code" lines="3" n_exec="7" outputs="1" />\nprint(1)\nprint(2)\n')
+		expect(formatted).toContain('<cell index="1" id="code-1" type="code" lines="3" n_exec="7" outputs="1" />')
+		expect(formatted).toContain('<output cell_id="code-1" index="0" type="stream" />')
 	})
 
 	test("summary handles missing metadata and missing source", () => {
@@ -250,6 +261,38 @@ describe("notebook core", () => {
 		expect(summary.cells[0]?.previewTruncated).toBe(true)
 		expect(summary.cells[0]?.previewRemainingLines).toBe(1)
 		expect(formatNotebookSummary(summary)).toContain("five\n[1 more lines]")
+	})
+
+	test("summary formats output inventories and output previews", () => {
+		const notebook = parseNotebook(
+			JSON.stringify({
+				nbformat: 4,
+				nbformat_minor: 5,
+				cells: [
+					{
+						cell_type: "code",
+						id: "c",
+						source: "pass\n",
+						outputs: [
+							{ output_type: "stream", name: "stdout", text: ["a\n", "b\n", "c\n", "d\n", "e\n", "f\n"] },
+							{
+								output_type: "execute_result",
+								execution_count: 3,
+								data: { "text/plain": ["42\n"], "text/html": ["<b>42</b>"], "image/png": "AAAA" }
+							},
+							{ output_type: "error", ename: "ValueError", traceback: ["tb1", "tb2"] }
+						]
+					}
+				]
+			})
+		)
+		const formatted = formatNotebookSummary(summarizeNotebook("demo.ipynb", notebook))
+		expect(formatted).toContain('<output cell_id="c" index="0" type="stream" name="stdout" />\na\nb\nc\nd\ne\n[1 more lines]')
+		expect(formatted).toContain('<output cell_id="c" index="1" type="execute_result" mime="text/plain" n_exec="3" />\n42\n')
+		expect(formatted).toContain('<output cell_id="c" index="1" type="execute_result" mime="text/html" n_exec="3" />\n<b>42</b>')
+		expect(formatted).toContain('<output cell_id="c" index="1" type="execute_result" mime="image/png" n_exec="3" />')
+		expect(formatted).not.toContain('mime="image/png" n_exec="3" />\nAAAA')
+		expect(formatted).toContain('<output cell_id="c" index="2" type="error" ename="ValueError" />\ntb1\ntb2\n')
 	})
 
 	test("saveNotebook writes deterministic json with trailing newline", async () => {
