@@ -363,7 +363,7 @@ export function formatNotebookSummary(summary: NotebookSummary): string {
 	]
 	if (summary.language) metadata.push(`language=${summary.language}`)
 
-	const lines = [`meta ${metadata.join(" ")}`]
+	const lines = [`<meta ${metadata.join(" ")} />`]
 
 	for (const cell of summary.cells) {
 		const attrs = [
