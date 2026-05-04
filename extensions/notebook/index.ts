@@ -134,8 +134,8 @@ export default function notebookExtension(pi: ExtensionAPI) {
 	})
 
 	pi.registerTool({
-		name: "notebook_read_output",
-		label: "Notebook Read Output",
+		name: "notebook_read_cell_output",
+		label: "Notebook Read Cell Output",
 		description: "Read one output from a code cell. Supports text and image outputs.",
 		promptSnippet: "Read a specific cell output by index. Use notebook_summary first to discover available outputs and their mime types.",
 		parameters: notebookReadOutputParams,

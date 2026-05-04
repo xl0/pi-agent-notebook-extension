@@ -319,7 +319,7 @@ export const notebookToolRunners = {
 	notebook_move: runNotebookMove,
 	notebook_merge: runNotebookMerge,
 	notebook_clear_outputs: runNotebookClearOutputs,
-	notebook_read_output: runNotebookReadOutput
+	notebook_read_cell_output: runNotebookReadOutput
 } as const
 
 export type NotebookToolName = keyof typeof notebookToolRunners

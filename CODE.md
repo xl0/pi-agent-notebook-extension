@@ -22,7 +22,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `notebook_move({ path, cellId?|index?, targetCellId?|targetIndex?, direction })`
   - `notebook_merge({ path, cellId?|index?, direction })`
   - `notebook_clear_outputs({ path, cellId?|index? })`
-  - `notebook_read_output({ path, cellId?|index?, outputIndex, mime? })`
+  - `notebook_read_cell_output({ path, cellId?|index?, outputIndex, mime? })`
 - Current notebook support:
   - parse notebook JSON directly; require `nbformat === 4`
   - summarize kernel/language/cells via one `meta` line plus one pseudo-XML cell header per cell
