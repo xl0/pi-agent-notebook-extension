@@ -572,6 +572,113 @@ export function mergeCell(notebook: Notebook, cell: string | number, direction: 
 	}
 }
 
+export interface NotebookReadOutput {
+	cellIndex: number
+	cellId?: string
+	outputIndex: number
+	outputType: string
+	mime: string
+	text?: string
+	imageData?: string
+}
+
+export function readCellOutput(
+	notebook: Notebook,
+	cell: string | number,
+	outputIndex: number,
+	mime?: string
+): NotebookReadOutput {
+	const index = findCellIndexBySelector(notebook, cell)
+	const cellData = cellAt(notebook, index)
+	const cellId = storedCellId(cellData)
+
+	if (cellData.cell_type !== "code") {
+		throw new Error(`Cell ${typeof cell === "string" ? cell : index} is not a code cell`)
+	}
+
+	const outputs = Array.isArray(cellData.outputs) ? cellData.outputs : []
+	if (outputIndex < 0 || outputIndex >= outputs.length) {
+		throw new Error(`Output index out of range: ${outputIndex} (cell has ${outputs.length} outputs)`)
+	}
+
+	const output = outputs[outputIndex]
+	if (!isObject(output)) {
+		throw new Error(`Output ${outputIndex} is not an object`)
+	}
+
+	const raw = output as RawOutput
+	const outputType = typeof raw.output_type === "string" ? raw.output_type : "unknown"
+
+	if (outputType === "stream") {
+		return {
+			cellIndex: index,
+			...(cellId === undefined ? {} : { cellId }),
+			outputIndex,
+			outputType,
+			mime: "text/plain",
+			text: normalizeOutputText(raw.text)
+		}
+	}
+
+	if (outputType === "error") {
+		const traceback = Array.isArray(raw.traceback) ? raw.traceback.filter((line): line is string => typeof line === "string") : []
+		return {
+			cellIndex: index,
+			...(cellId === undefined ? {} : { cellId }),
+			outputIndex,
+			outputType,
+			mime: "text/plain",
+			text: traceback.join("\n")
+		}
+	}
+
+	if (outputType === "display_data" || outputType === "execute_result") {
+		if (!isObject(raw.data)) {
+			throw new Error(`Output ${outputIndex} has no data`)
+		}
+
+		const mimeTypes = Object.keys(raw.data)
+		if (mimeTypes.length === 0) {
+			throw new Error(`Output ${outputIndex} has no mime types`)
+		}
+
+		const selectedMime = mime ?? (mimeTypes.length === 1 ? mimeTypes[0]! : undefined)
+		if (selectedMime === undefined) {
+			throw new Error(`Output ${outputIndex} has multiple mime types: ${mimeTypes.join(", ")}. Specify one with the mime parameter.`)
+		}
+
+		if (!(selectedMime in raw.data)) {
+			throw new Error(`Mime type "${selectedMime}" not found in output ${outputIndex}. Available: ${mimeTypes.join(", ")}`)
+		}
+
+		const value = raw.data[selectedMime]
+		const isImage = selectedMime.startsWith("image/") && selectedMime !== "image/svg+xml"
+
+		if (isImage) {
+			const data = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : ""
+			return {
+				cellIndex: index,
+				...(cellId === undefined ? {} : { cellId }),
+				outputIndex,
+				outputType,
+				mime: selectedMime,
+				imageData: data
+			}
+		}
+
+		return {
+			cellIndex: index,
+			...(cellId === undefined ? {} : { cellId }),
+			outputIndex,
+			outputType,
+			mime: selectedMime,
+			text: normalizeOutputText(value)
+		}
+	}
+
+	throw new Error(`Unknown output type: ${outputType}`)
+}
+
 export function clearCellOutputs(notebook: Notebook, cell: string | number): NotebookReadCell {
 	const index = findCellIndexBySelector(notebook, cell)
 	const current = cellAt(notebook, index)

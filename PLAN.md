@@ -57,7 +57,7 @@
 ## Plan
 
 - [x] Establish the repo as a real Pi package with a notebook extension entrypoint.
-- [~] Build notebook tooling in thin vertical slices: read-only first, then cell mutation tools.
+- [x] Build notebook tooling in thin vertical slices: read-only first, then cell mutation tools.
 - [x] Finish structural notebook operations and selectors.
 - [ ] Verify against real notebooks through Pi.
 
@@ -89,6 +89,7 @@
   - [x] Implement `notebook_move`
   - [x] Implement `notebook_merge`
   - [x] Implement `notebook_clear_outputs`
+  - [x] Implement `notebook_read_output`
   - [x] Simplify read to single-cell `notebook_read_cell` with optional line slicing
 - [~] Verification
   - [x] Add tests for existing parse/read/write/edit operations

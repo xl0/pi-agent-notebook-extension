@@ -22,6 +22,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `notebook_move({ path, cellId?|index?, targetCellId?|targetIndex?, direction })`
   - `notebook_merge({ path, cellId?|index?, direction })`
   - `notebook_clear_outputs({ path, cellId?|index? })`
+  - `notebook_read_output({ path, cellId?|index?, outputIndex, mime? })`
 - Current notebook support:
   - parse notebook JSON directly; require `nbformat === 4`
   - summarize kernel/language/cells via one `meta` line plus one pseudo-XML cell header per cell
@@ -39,12 +40,13 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - move one cell before or after another cell by id or index
   - merge one cell with the adjacent same-type cell `above` or `below`, preserving the anchor id and inserting one boundary newline when needed
   - clear outputs from one code cell while preserving source and execution count
+  - read one output by index from a code cell; returns text for text-like mimes, image for binary image mimes (image/png, image/jpeg, etc.); image/svg+xml is returned as text; rich outputs with multiple mime types require the `mime` parameter
   - save path rewrites notebook JSON in Jupyter-style formatting: source as `string[]`, 1-space JSON indentation, trailing newline
 - Tests split by layer:
   - `test/notebook-core.test.ts` covers parse/validation, pure cell ops, formatting helpers, id assignment, load/save roundtrips, save formatting, and fixture-level core behavior
   - `test/notebook-*.tool.test.ts` keeps one file per tool for runner/output/selector behavior
   - `test/notebook-*.workflow.test.ts` keeps one file per multi-step workflow (write→read parity, no-id mutation flow, real-fixture edit/save)
-  - current suite passes under `bun test` (62 tests)
+  - current suite passes under `bun test` (63 tests)
 - Local tool smoke runner: `bun run tool -- <tool-name> '<json-args>'` prints raw tool text output without launching Pi.
 - Biome config lives in `biome.json`.
   - schema migrated to match installed CLI `2.4.14`

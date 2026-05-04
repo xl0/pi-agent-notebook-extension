@@ -12,6 +12,7 @@ import {
 	moveCell,
 	readAllCells,
 	readCellById,
+	readCellOutput,
 	saveNotebook,
 	sliceCellSource,
 	summarizeNotebook,
@@ -89,6 +90,20 @@ export const notebookClearOutputsParams = Type.Object({
 	index: Type.Optional(Type.Integer({ description: "Code cell index whose outputs should be cleared." }))
 })
 
+export const notebookReadOutputParams = Type.Object({
+	path: Type.String({ description: "Path to an .ipynb notebook." }),
+	cellId: Type.Optional(Type.String({ description: "Cell id to read output from." })),
+	index: Type.Optional(Type.Integer({ description: "Cell index to read output from." })),
+	outputIndex: Type.Integer({ description: "Index of the output within the cell (0-based)." }),
+	mime: Type.Optional(
+		Type.String({
+			description: "Mime type to select. Required for rich outputs (display_data/execute_result) with multiple variants. E.g. 'text/plain', 'image/png', 'image/svg+xml'."
+		})
+	),
+	lineOffset: Type.Optional(Type.Integer({ description: "Inclusive line offset within the text output." })),
+	lineLimit: Type.Optional(Type.Integer({ description: "Maximum number of lines to read from the offset." }))
+})
+
 export type NotebookSummaryParams = Static<typeof notebookSummaryParams>
 export type NotebookReadCellParams = Static<typeof notebookReadCellParams>
 export type NotebookWriteCellParams = Static<typeof notebookWriteCellParams>
@@ -98,6 +113,7 @@ export type NotebookDeleteParams = Static<typeof notebookDeleteParams>
 export type NotebookMoveParams = Static<typeof notebookMoveParams>
 export type NotebookMergeParams = Static<typeof notebookMergeParams>
 export type NotebookClearOutputsParams = Static<typeof notebookClearOutputsParams>
+export type NotebookReadOutputParams = Static<typeof notebookReadOutputParams>
 
 export interface NotebookToolResult {
 	content: Array<{ type: "text"; text: string }>
@@ -257,6 +273,25 @@ export async function runNotebookMerge(params: NotebookMergeParams): Promise<Not
 	}
 }
 
+export async function runNotebookReadOutput(params: NotebookReadOutputParams): Promise<NotebookToolResult> {
+	const notebook = await loadNotebook(params.path)
+	const selector = requireSingleCellSelector(params.cellId, params.index)
+	const result = readCellOutput(notebook, selector, params.outputIndex, params.mime)
+
+	if (result.imageData !== undefined) {
+		return {
+			content: [{ type: "image", data: result.imageData, mimeType: result.mime }],
+			details: result
+		}
+	}
+
+	const text = sliceCellSource(result.text ?? "", params.lineOffset, params.lineLimit)
+	return {
+		content: [{ type: "text", text }],
+		details: result
+	}
+}
+
 export async function runNotebookClearOutputs(params: NotebookClearOutputsParams): Promise<NotebookToolResult> {
 	const notebook = await loadNotebook(params.path)
 	const selector = requireSingleCellSelector(params.cellId, params.index)
@@ -283,7 +318,8 @@ export const notebookToolRunners = {
 	notebook_delete: runNotebookDelete,
 	notebook_move: runNotebookMove,
 	notebook_merge: runNotebookMerge,
-	notebook_clear_outputs: runNotebookClearOutputs
+	notebook_clear_outputs: runNotebookClearOutputs,
+	notebook_read_output: runNotebookReadOutput
 } as const
 
 export type NotebookToolName = keyof typeof notebookToolRunners

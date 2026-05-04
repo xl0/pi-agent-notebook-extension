@@ -7,6 +7,7 @@ import {
 	notebookMergeParams,
 	notebookMoveParams,
 	notebookReadCellParams,
+	notebookReadOutputParams,
 	notebookSummaryParams,
 	notebookWriteCellParams,
 	runNotebookClearOutputs,
@@ -16,6 +17,7 @@ import {
 	runNotebookMerge,
 	runNotebookMove,
 	runNotebookReadCell,
+	runNotebookReadOutput,
 	runNotebookSummary,
 	runNotebookWriteCell
 } from "./tools"
@@ -128,6 +130,17 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		parameters: notebookClearOutputsParams,
 		async execute(_toolCallId, params) {
 			return runNotebookClearOutputs(params)
+		}
+	})
+
+	pi.registerTool({
+		name: "notebook_read_output",
+		label: "Notebook Read Output",
+		description: "Read one output from a code cell. Supports text and image outputs.",
+		promptSnippet: "Read a specific cell output by index. Use notebook_summary first to discover available outputs and their mime types.",
+		parameters: notebookReadOutputParams,
+		async execute(_toolCallId, params) {
+			return runNotebookReadOutput(params)
 		}
 	})
 }

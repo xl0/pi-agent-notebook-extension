@@ -15,5 +15,9 @@ if (!(toolName in notebookToolRunners)) {
 const args = JSON.parse(jsonArgs) as object
 const result = await notebookToolRunners[toolName as NotebookToolName](args as never)
 for (const part of result.content) {
-	if (part.type === "text") process.stdout.write(`${part.text}\n`)
+	if (part.type === "text") {
+		process.stdout.write(`${part.text}\n`)
+	} else if (part.type === "image") {
+		console.log(`[image: ${part.mimeType}, ${part.data.length} bytes]`)
+	}
 }
