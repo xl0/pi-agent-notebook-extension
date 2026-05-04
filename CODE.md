@@ -23,6 +23,7 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - `notebook_merge({ path, cellId?|index?, direction })`
   - `notebook_clear_outputs({ path, cellId?|index? })`
   - `notebook_read_cell_output({ path, cellId?|index?, outputIndex, mime? })`
+  - `notebook_read_cell_attachment({ path, cellId?|index?, key })`
 - Current notebook support:
   - parse notebook JSON directly; require `nbformat === 4`
   - summarize kernel/language/cells via one `meta` line plus one pseudo-XML cell header per cell
@@ -41,6 +42,9 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
   - merge one cell with the adjacent same-type cell `above` or `below`, preserving the anchor id and inserting one boundary newline when needed
   - clear outputs from one code cell while preserving source and execution count
   - read one output by index from a code cell; returns text for text-like mimes, image for binary image mimes (image/png, image/jpeg, etc.); image/svg+xml is returned as text; rich outputs with multiple mime types require the `mime` parameter
+  - read one image attachment from a cell by key; returns image content
+  - `notebook_read_cell` on markdown cells extracts `data:` URI images: replaces them with `[image: mime/type]` markers in text and returns decoded images as `ImageContent` items
+  - `notebook_summary` lists attachment keys in cell headers via `atts="key1 key2"` attribute
   - save path rewrites notebook JSON in Jupyter-style formatting: source as `string[]`, 1-space JSON indentation, trailing newline
 - Tests split by layer:
   - `test/notebook-core.test.ts` covers parse/validation, pure cell ops, formatting helpers, id assignment, load/save roundtrips, save formatting, and fixture-level core behavior

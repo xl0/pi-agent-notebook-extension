@@ -90,6 +90,7 @@
   - [x] Implement `notebook_merge`
   - [x] Implement `notebook_clear_outputs`
   - [x] Implement `notebook_read_cell_output`
+  - [x] Implement `notebook_read_cell_attachment`
   - [x] Simplify read to single-cell `notebook_read_cell` with optional line slicing
 - [~] Verification
   - [x] Add tests for existing parse/read/write/edit operations

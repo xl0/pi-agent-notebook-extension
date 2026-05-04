@@ -6,6 +6,7 @@ import {
 	notebookInsertParams,
 	notebookMergeParams,
 	notebookMoveParams,
+	notebookReadCellAttachmentParams,
 	notebookReadCellParams,
 	notebookReadOutputParams,
 	notebookSummaryParams,
@@ -17,6 +18,7 @@ import {
 	runNotebookMerge,
 	runNotebookMove,
 	runNotebookReadCell,
+	runNotebookReadCellAttachment,
 	runNotebookReadOutput,
 	runNotebookSummary,
 	runNotebookWriteCell
@@ -141,6 +143,17 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		parameters: notebookReadOutputParams,
 		async execute(_toolCallId, params) {
 			return runNotebookReadOutput(params)
+		}
+	})
+
+	pi.registerTool({
+		name: "notebook_read_cell_attachment",
+		label: "Notebook Read Cell Attachment",
+		description: "Read an image attachment from a cell by its key.",
+		promptSnippet: "Read a cell attachment image. Use notebook_summary first to discover available attachment keys (atts attribute).",
+		parameters: notebookReadCellAttachmentParams,
+		async execute(_toolCallId, params) {
+			return runNotebookReadCellAttachment(params)
 		}
 	})
 }

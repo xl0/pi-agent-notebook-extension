@@ -5,12 +5,14 @@ import {
 	deleteCell,
 	editCellSource,
 	ensureCellIds,
+	extractDataUriImages,
 	formatNotebookSummary,
 	insertCell,
 	loadNotebook,
 	mergeCell,
 	moveCell,
 	readAllCells,
+	readCellAttachment,
 	readCellById,
 	readCellOutput,
 	saveNotebook,
@@ -90,6 +92,13 @@ export const notebookClearOutputsParams = Type.Object({
 	index: Type.Optional(Type.Integer({ description: "Code cell index whose outputs should be cleared." }))
 })
 
+export const notebookReadCellAttachmentParams = Type.Object({
+	path: Type.String({ description: "Path to an .ipynb notebook." }),
+	cellId: Type.Optional(Type.String({ description: "Cell id." })),
+	index: Type.Optional(Type.Integer({ description: "Cell index." })),
+	key: Type.String({ description: "Attachment key (filename)." })
+})
+
 export const notebookReadOutputParams = Type.Object({
 	path: Type.String({ description: "Path to an .ipynb notebook." }),
 	cellId: Type.Optional(Type.String({ description: "Cell id to read output from." })),
@@ -114,6 +123,7 @@ export type NotebookMoveParams = Static<typeof notebookMoveParams>
 export type NotebookMergeParams = Static<typeof notebookMergeParams>
 export type NotebookClearOutputsParams = Static<typeof notebookClearOutputsParams>
 export type NotebookReadOutputParams = Static<typeof notebookReadOutputParams>
+export type NotebookReadCellAttachmentParams = Static<typeof notebookReadCellAttachmentParams>
 
 export interface NotebookToolResult {
 	content: Array<{ type: "text"; text: string }>
@@ -151,9 +161,19 @@ export async function runNotebookReadCell(params: NotebookReadCellParams): Promi
 	const notebook = await loadNotebook(params.path)
 	const selector = requireSingleCellSelector(params.cellId, params.index)
 	const result = typeof selector === "string" ? readCellById(notebook, selector) : requireReadCellAtIndex(notebook, selector)
-	const text = sliceCellSource(result.source, params.lineOffset, params.lineLimit)
+	const sliced = sliceCellSource(result.source, params.lineOffset, params.lineLimit)
+
+	if (result.type === "markdown") {
+		const { text, images } = extractDataUriImages(sliced)
+		const content: NotebookToolResult["content"] = [{ type: "text", text }]
+		for (const img of images) {
+			content.push({ type: "image", data: img.data, mimeType: img.mime })
+		}
+		return { content, details: result }
+	}
+
 	return {
-		content: [{ type: "text", text }],
+		content: [{ type: "text", text: sliced }],
 		details: result
 	}
 }
@@ -296,6 +316,16 @@ export async function runNotebookReadOutput(params: NotebookReadOutputParams): P
 	return { content, details: result }
 }
 
+export async function runNotebookReadCellAttachment(params: NotebookReadCellAttachmentParams): Promise<NotebookToolResult> {
+	const notebook = await loadNotebook(params.path)
+	const selector = requireSingleCellSelector(params.cellId, params.index)
+	const result = readCellAttachment(notebook, selector, params.key)
+	return {
+		content: [{ type: "image", data: result.data, mimeType: result.mime }],
+		details: result
+	}
+}
+
 export async function runNotebookClearOutputs(params: NotebookClearOutputsParams): Promise<NotebookToolResult> {
 	const notebook = await loadNotebook(params.path)
 	const selector = requireSingleCellSelector(params.cellId, params.index)
@@ -323,7 +353,8 @@ export const notebookToolRunners = {
 	notebook_move: runNotebookMove,
 	notebook_merge: runNotebookMerge,
 	notebook_clear_outputs: runNotebookClearOutputs,
-	notebook_read_cell_output: runNotebookReadOutput
+	notebook_read_cell_output: runNotebookReadOutput,
+	notebook_read_cell_attachment: runNotebookReadCellAttachment
 } as const
 
 export type NotebookToolName = keyof typeof notebookToolRunners

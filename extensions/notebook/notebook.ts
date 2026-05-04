@@ -56,6 +56,7 @@ export interface NotebookCellSummary {
 	executionCount?: number | null
 	outputCount?: number
 	outputs?: NotebookOutputSummary[]
+	attachmentKeys?: string[]
 }
 
 export interface NotebookSummary {
@@ -334,6 +335,7 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
 			const executionCount = cell.cell_type === "code" ? ((cell.execution_count as number | null | undefined) ?? null) : undefined
 			const outputs = cell.cell_type === "code" && Array.isArray(cell.outputs) ? cell.outputs.flatMap(summarizeOutput) : undefined
 			const outputCount = cell.cell_type === "code" ? (Array.isArray(cell.outputs) ? cell.outputs.length : 0) : undefined
+			const attachmentKeys = isObject(cell.attachments) ? Object.keys(cell.attachments) : undefined
 			const preview = previewSource(source)
 			return {
 				index,
@@ -346,7 +348,8 @@ export function summarizeNotebook(path: string, notebook: Notebook): NotebookSum
 				previewRemainingLines: preview.remainingLines,
 				...(executionCount === undefined ? {} : { executionCount }),
 				...(outputCount === undefined ? {} : { outputCount }),
-				...(outputs === undefined ? {} : { outputs })
+				...(outputs === undefined ? {} : { outputs }),
+				...(attachmentKeys === undefined || attachmentKeys.length === 0 ? {} : { attachmentKeys })
 			}
 		})
 	}
@@ -372,6 +375,8 @@ export function formatNotebookSummary(summary: NotebookSummary): string {
 		if (cell.executionCount !== undefined && cell.executionCount !== null)
 			attrs.push(`n_exec=${quoteAttribute(String(cell.executionCount))}`)
 		if (cell.outputCount !== undefined) attrs.push(`outputs=${quoteAttribute(String(cell.outputCount))}`)
+		if (cell.attachmentKeys !== undefined && cell.attachmentKeys.length > 0)
+			attrs.push(`atts=${quoteAttribute(cell.attachmentKeys.join(" "))}`)
 		lines.push(`<cell ${attrs.join(" ")} />`)
 		if (cell.preview.length > 0) lines.push(cell.preview)
 		for (const output of cell.outputs ?? []) {
@@ -698,6 +703,42 @@ export function readCellOutput(
 	}
 
 	throw new Error(`Unknown output type: ${outputType}`)
+}
+
+const dataUriRe = /data:(image\/[a-zA-Z+.-]+);base64,([A-Za-z0-9+/=]+)/g
+
+export function extractDataUriImages(source: string): { text: string; images: Array<{ mime: string; data: string }> } {
+	const images: Array<{ mime: string; data: string }> = []
+	const text = source.replace(dataUriRe, (_match, mime, data) => {
+		images.push({ mime, data })
+		return `[image: ${mime}]`
+	})
+	return { text, images }
+}
+
+export function readCellAttachment(notebook: Notebook, cell: string | number, key: string): { mime: string; data: string } {
+	const index = findCellIndexBySelector(notebook, cell)
+	const cellData = cellAt(notebook, index)
+
+	if (!isObject(cellData.attachments) || !(key in (cellData.attachments as Record<string, unknown>))) {
+		throw new Error(`Attachment "${key}" not found in cell ${typeof cell === "string" ? cell : index}`)
+	}
+
+	const attachment = (cellData.attachments as Record<string, unknown>)[key]
+	if (!isObject(attachment)) {
+		throw new Error(`Attachment "${key}" is not an object`)
+	}
+
+	const mimes = Object.keys(attachment).filter(m => m.startsWith("image/"))
+	if (mimes.length === 0) {
+		throw new Error(`Attachment "${key}" has no image data. Available: ${Object.keys(attachment).join(", ")}`)
+	}
+
+	const mime = mimes[0]!
+	const value = attachment[mime]
+	const data = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : ""
+
+	return { mime, data }
 }
 
 export function clearCellOutputs(notebook: Notebook, cell: string | number): NotebookReadCell {
