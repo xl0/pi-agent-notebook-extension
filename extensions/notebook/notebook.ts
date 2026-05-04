@@ -580,6 +580,7 @@ export interface NotebookReadOutput {
 	mime: string
 	text?: string
 	imageData?: string
+	images?: Array<{ mime: string; data: string }>
 }
 
 export function readCellOutput(
@@ -644,7 +645,27 @@ export function readCellOutput(
 
 		const selectedMime = mime ?? (mimeTypes.length === 1 ? mimeTypes[0]! : undefined)
 		if (selectedMime === undefined) {
-			throw new Error(`Output ${outputIndex} has multiple mime types: ${mimeTypes.join(", ")}. Specify one with the mime parameter.`)
+			const textMimes = mimeTypes.filter(mt => !(mt.startsWith("image/") && mt !== "image/svg+xml"))
+			const imageMimes = mimeTypes.filter(mt => mt.startsWith("image/") && mt !== "image/svg+xml")
+			const text = textMimes.length > 0
+				? textMimes.map(mt => `<output mime="${mt}" />\n${normalizeOutputText(raw.data[mt])}`).join("\n")
+				: undefined
+			const images = imageMimes.map(mt => {
+				const value = raw.data[mt]
+				return { mime: mt, data: typeof value === "string" ? value : Array.isArray(value) ? value.join("") : "" }
+			})
+			if (text === undefined && images.length === 0) {
+				throw new Error(`Output ${outputIndex} has no displayable content`)
+			}
+			return {
+				cellIndex: index,
+				...(cellId === undefined ? {} : { cellId }),
+				outputIndex,
+				outputType,
+				mime: [...textMimes, ...imageMimes.map(im => im.mime)].join(", "),
+				...(text === undefined ? {} : { text }),
+				...(images.length > 0 ? { images } : {})
+			}
 		}
 
 		if (!(selectedMime in raw.data)) {

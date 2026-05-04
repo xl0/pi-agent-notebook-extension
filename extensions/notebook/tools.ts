@@ -285,11 +285,15 @@ export async function runNotebookReadOutput(params: NotebookReadOutputParams): P
 		}
 	}
 
-	const text = sliceCellSource(result.text ?? "", params.lineOffset, params.lineLimit)
-	return {
-		content: [{ type: "text", text }],
-		details: result
+	const content: NotebookToolResult["content"] = []
+	if (result.text !== undefined) {
+		const sliced = sliceCellSource(result.text, params.lineOffset, params.lineLimit)
+		content.push({ type: "text", text: sliced })
 	}
+	for (const img of result.images ?? []) {
+		content.push({ type: "image", data: img.data, mimeType: img.mime })
+	}
+	return { content, details: result }
 }
 
 export async function runNotebookClearOutputs(params: NotebookClearOutputsParams): Promise<NotebookToolResult> {
