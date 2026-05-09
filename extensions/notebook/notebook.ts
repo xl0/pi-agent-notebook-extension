@@ -6,6 +6,7 @@ export interface NotebookCell {
 	id?: string
 	source?: string | string[]
 	metadata?: Record<string, unknown>
+	attachments?: unknown
 	execution_count?: number | null
 	outputs?: unknown[]
 	[key: string]: unknown
@@ -427,21 +428,6 @@ export function readCellById(notebook: Notebook, cellId: string): NotebookReadCe
 	return readCell(cellAt(notebook, index), index)
 }
 
-export function readCellsById(notebook: Notebook, cellIds: string[]): NotebookReadCell[] {
-	return cellIds.map(cellId => readCellById(notebook, cellId))
-}
-
-export function readCellRange(notebook: Notebook, startIndex: number, endIndex: number): NotebookReadCell[] {
-	if (!Number.isInteger(startIndex) || !Number.isInteger(endIndex)) {
-		throw new Error("Cell range indices must be integers")
-	}
-	if (startIndex < 0 || endIndex < 0 || startIndex >= notebook.cells.length || endIndex >= notebook.cells.length) {
-		throw new Error(`Cell range out of range: ${startIndex}..${endIndex}`)
-	}
-	if (startIndex > endIndex) throw new Error(`Invalid cell range: ${startIndex}..${endIndex}`)
-	return readAllCells(notebook).slice(startIndex, endIndex + 1)
-}
-
 export function writeCellSource(notebook: Notebook, cell: string | number, source: string): Notebook {
 	const index = findCellIndexBySelector(notebook, cell)
 	const current = cellAt(notebook, index)
@@ -588,12 +574,7 @@ export interface NotebookReadOutput {
 	images?: Array<{ mime: string; data: string }>
 }
 
-export function readCellOutput(
-	notebook: Notebook,
-	cell: string | number,
-	outputIndex: number,
-	mime?: string
-): NotebookReadOutput {
+export function readCellOutput(notebook: Notebook, cell: string | number, outputIndex: number, mime?: string): NotebookReadOutput {
 	const index = findCellIndexBySelector(notebook, cell)
 	const cellData = cellAt(notebook, index)
 	const cellId = storedCellId(cellData)
@@ -642,21 +623,24 @@ export function readCellOutput(
 		if (!isObject(raw.data)) {
 			throw new Error(`Output ${outputIndex} has no data`)
 		}
+		const data = raw.data
 
-		const mimeTypes = Object.keys(raw.data)
+		const mimeTypes = Object.keys(data)
 		if (mimeTypes.length === 0) {
 			throw new Error(`Output ${outputIndex} has no mime types`)
 		}
 
-		const selectedMime = mime ?? (mimeTypes.length === 1 ? mimeTypes[0]! : undefined)
+		let selectedMime = mime
+		if (selectedMime === undefined && mimeTypes.length === 1) {
+			selectedMime = mimeTypes[0]
+		}
 		if (selectedMime === undefined) {
 			const textMimes = mimeTypes.filter(mt => !(mt.startsWith("image/") && mt !== "image/svg+xml"))
 			const imageMimes = mimeTypes.filter(mt => mt.startsWith("image/") && mt !== "image/svg+xml")
-			const text = textMimes.length > 0
-				? textMimes.map(mt => `<output mime="${mt}" />\n${normalizeOutputText(raw.data[mt])}`).join("\n")
-				: undefined
+			const text =
+				textMimes.length > 0 ? textMimes.map(mt => `<output mime="${mt}" />\n${normalizeOutputText(data[mt])}`).join("\n") : undefined
 			const images = imageMimes.map(mt => {
-				const value = raw.data[mt]
+				const value = data[mt]
 				return { mime: mt, data: typeof value === "string" ? value : Array.isArray(value) ? value.join("") : "" }
 			})
 			if (text === undefined && images.length === 0) {
@@ -667,17 +651,17 @@ export function readCellOutput(
 				...(cellId === undefined ? {} : { cellId }),
 				outputIndex,
 				outputType,
-				mime: [...textMimes, ...imageMimes.map(im => im.mime)].join(", "),
+				mime: [...textMimes, ...imageMimes].join(", "),
 				...(text === undefined ? {} : { text }),
 				...(images.length > 0 ? { images } : {})
 			}
 		}
 
-		if (!(selectedMime in raw.data)) {
+		if (!(selectedMime in data)) {
 			throw new Error(`Mime type "${selectedMime}" not found in output ${outputIndex}. Available: ${mimeTypes.join(", ")}`)
 		}
 
-		const value = raw.data[selectedMime]
+		const value = data[selectedMime]
 		const isImage = selectedMime.startsWith("image/") && selectedMime !== "image/svg+xml"
 
 		if (isImage) {
@@ -720,11 +704,12 @@ export function readCellAttachment(notebook: Notebook, cell: string | number, ke
 	const index = findCellIndexBySelector(notebook, cell)
 	const cellData = cellAt(notebook, index)
 
-	if (!isObject(cellData.attachments) || !(key in (cellData.attachments as Record<string, unknown>))) {
+	const attachments = cellData.attachments
+	if (!isObject(attachments) || !(key in attachments)) {
 		throw new Error(`Attachment "${key}" not found in cell ${typeof cell === "string" ? cell : index}`)
 	}
 
-	const attachment = (cellData.attachments as Record<string, unknown>)[key]
+	const attachment = attachments[key]
 	if (!isObject(attachment)) {
 		throw new Error(`Attachment "${key}" is not an object`)
 	}
@@ -734,7 +719,8 @@ export function readCellAttachment(notebook: Notebook, cell: string | number, ke
 		throw new Error(`Attachment "${key}" has no image data. Available: ${Object.keys(attachment).join(", ")}`)
 	}
 
-	const mime = mimes[0]!
+	const mime = mimes[0]
+	if (mime === undefined) throw new Error(`Attachment "${key}" has no image data. Available: ${Object.keys(attachment).join(", ")}`)
 	const value = attachment[mime]
 	const data = typeof value === "string" ? value : Array.isArray(value) ? value.join("") : ""
 

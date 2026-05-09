@@ -9,9 +9,16 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Main extension entry: `extensions/notebook/index.ts`.
   - every notebook tool now has a short prompt snippet for discoverability
   - shared notebook-tool semantics live once on `notebook_summary` as namespaced guidelines, so deduped system-prompt guidance keeps notebook scope clear
+  - path normalization at the adapter seam: strips leading `@`, resolves relative paths against `ctx.cwd`
+  - all mutation tools are wrapped in `withFileMutationQueue(normalizedPath, ...)` for correctness under Pi's parallel tool execution
+  - read-only tools are unqueued but still get path normalization
 - Pure notebook logic lives in `extensions/notebook/notebook.ts`.
+  - exported functions: parseNotebook, loadNotebook, saveNotebook, summarizeNotebook, formatNotebookSummary, ensureCellIds, readAllCells, readCellById, sliceCellSource, writeCellSource, editCellSource, applyExactSourceEdits, insertCell, deleteCell, moveCell, mergeCell, clearCellOutputs, readCellOutput, readCellAttachment, extractDataUriImages, normalizeSource
+  - `readCellsById` and `readCellRange` removed from public interface (unused by any tool)
 - Shared tool runners + schemas live in `extensions/notebook/tools.ts`.
   - string-valued enum parameters use Pi-recommended `StringEnum` schemas so providers see `type: "string"` plus `enum`, not `anyOf`/`const` unions
+  - internal `mutateNotebook(path, mutate)` helper consolidates load → ensureCellIds → mutate → save for all mutation runners
+  - `formatAssignedIds` and `selectorText` helpers reduce formatting repetition
 - Implemented tools:
   - `notebook_summary({ path })`
   - `notebook_read_cell({ path, cellId?|index?, lineOffset?, lineLimit? })`
@@ -78,3 +85,6 @@ Goal: Pi package exposing notebook-focused tools for safe `.ipynb` inspection an
 - Save/mutation path still normalizes notebook JSON shape/format on write, even though it now aims to match common Jupyter formatting.
 - Mutation tools on no-id notebooks now rely on index selectors until ids are persisted; read-only id-based addressing is intentionally unavailable in that state.
 - Real notebook fixtures live in `test/fixtures/`.
+- `PLAN.md` now holds the main actionable planning. `IMPROVEMENTS-PLAN.md` remains as a fuller improvement note covering rationale and execution detail.
+- Path normalization, mutation queueing, and mutation orchestration helper all implemented.
+- `readCellsById` and `readCellRange` removed from public interface.

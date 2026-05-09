@@ -23,6 +23,7 @@
 		"typescript": "^6.0.3"
 	},
 	"peerDependencies": {
+		"@mariozechner/pi-ai": "*",
 		"@mariozechner/pi-coding-agent": "*",
 		"typebox": "*"
 	},

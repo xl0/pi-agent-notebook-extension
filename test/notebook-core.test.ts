@@ -17,8 +17,6 @@ import {
 	parseNotebook,
 	readAllCells,
 	readCellById,
-	readCellRange,
-	readCellsById,
 	saveNotebook,
 	sliceCellSource,
 	summarizeNotebook,
@@ -61,8 +59,12 @@ describe("notebook core", () => {
 		const notebook = parseNotebook(createNotebookText())
 		expect(readAllCells(notebook)).toHaveLength(2)
 		expect(readCellById(notebook, "code-1").source).toBe("print(1)\nprint(2)\n")
-		expect(readCellsById(notebook, ["code-1", "intro"]).map(cell => cell.id)).toEqual(["code-1", "intro"])
-		expect(readCellRange(notebook, 0, 1).map(cell => cell.id)).toEqual(["intro", "code-1"])
+		expect(["code-1", "intro"].map(id => readCellById(notebook, id).id)).toEqual(["code-1", "intro"])
+		expect(
+			readAllCells(notebook)
+				.slice(0, 2)
+				.map(cell => cell.id)
+		).toEqual(["intro", "code-1"])
 	})
 
 	test("normalizes string array source", () => {

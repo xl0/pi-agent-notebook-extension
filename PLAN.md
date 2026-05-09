@@ -1,101 +1,146 @@
 # Pi notebook package
 
-## Decisions
+## Status
 
-- Package form: root-level Pi package, not only project-local `.pi/extensions`.
-- Use Biome for formatting + linting.
-  - formatter prefs: 140 cols, tabs, no trailing commas, compress JS/TS output via `semicolons: asNeeded` and `arrowParentheses: asNeeded`
-  - exclude raw `.ipynb` files from Biome; notebook JSON formatting stays owned by notebook save logic
-- Scope: edit existing `.ipynb` files only. No notebook execution. No custom TUI/UI.
-- Discovery: no notebook listing tool. Use normal file tools / shell for finding notebooks.
-- Backend: TypeScript, parse notebook JSON directly.
-  - no `@jupyterlab/nbformat` dependency; just local minimal types/helpers for the subset we support
-  - keep notebook operations in pure functions, extension glue thin
-- Format support:
-  - support only `nbformat === 4`
-  - do not expose synthetic ids in read/summary for missing-id cells
-  - persist missing cell ids for all cells on first mutation using short random 8-hex ids
-  - when needed, bump notebook minor to support cell ids (`4.5` semantics); never lower existing versions
-  - save using Jupyter-like JSON formatting: source as `string[]`, 1-space indentation, trailing newline
-  - no support for older major notebook versions
-- Cell addressing:
-  - default to `cellId` when present
-  - allow index-based addressing for no-id notebooks and placement operations
-  - one-cell-at-a-time for write/edit/insert/delete/move/merge/clear_outputs
-  - write_cell/edit_cell/delete/merge/clear_outputs support exactly one selector: `cellId` or `index`
-  - move supports exactly one source selector: `cellId` or `index`
-  - move also requires exactly one target selector: `targetCellId` or `targetIndex`, plus `direction: before|after`
-  - `notebook_insert` supports exactly one anchor selector: `cellId` or `index`; `index=-1` appends
-- Output policy:
-  - preserve outputs by default
-  - outputs only changed by explicit clear tool
-  - write should confirm success concisely, not echo source back
-  - edit should confirm success concisely, not echo source back
-- Metadata:
-  - separate metadata tool later if needed; not folded into source write
-- Read policy:
-  - concise summary tool
-  - summary output should always show `index` and should show `cellId` only when present in the notebook
-  - summary output should use pseudo-XML cell and output headers, with `cell_id` when present else `cell_index` on outputs, and one output header per MIME variant
-  - only text-like output variants should include preview text
-  - summary preview should be raw source text after each cell/output header, truncated after 5 lines with a trailing `[N more lines]` line when needed
-  - summary/read formatting must preserve literal notebook source text
-  - read_cell supports exactly one selector: `cellId` or `index`
-  - read_cell may optionally slice source with `lineOffset`/`lineLimit`
-  - read_cell text output is raw cell source only; truncated reads append `[N more lines. Use offset=M to continue.]`
-- Move/insert/merge semantics:
-  - move: place one cell before or after another cell by id or index; `targetIndex=-1` means the end
-  - insert: anchor by `cellId` or `index`, plus `direction: before|after`
-  - merge: one anchor cell plus `direction: above|below`, keep the anchor id, require same cell type, and insert one boundary newline when needed
-- Images/attachments: ignore for now
-- Testing:
-  - test notebook logic as pure TS functions with `bun test`
-  - prefer a small set of real `.ipynb` fixtures for file-level behavior
-  - keep a lightweight local tool runner for fast raw-output checks without launching Pi
-  - keep Pi integration thin, validate extension wiring separately via Pi/manual integration checks
+- [x] Repo is a real Pi package with a notebook extension entrypoint.
+- [x] Notebook tooling exists end-to-end: summary, cell reads, cell edits, structural ops, output/attachment reads.
+- [x] Tests cover core logic, tool runners, and multi-step workflows.
+- [ ] Verify against real notebooks through Pi, not just tests + local runner.
 
-## Plan
+## Constraints / decisions
 
-- [x] Establish the repo as a real Pi package with a notebook extension entrypoint.
-- [x] Build notebook tooling in thin vertical slices: read-only first, then cell mutation tools.
-- [x] Finish structural notebook operations and selectors.
-- [ ] Verify against real notebooks through Pi.
+- Keep `index.ts` as the Pi adapter seam.
+- Keep `tools.ts` as the runner/test seam. Do not merge it into `index.ts`.
+- Queueing and path normalization are adapter concerns, not notebook-core concerns.
+- Prefer one small internal mutation helper over a broader `NotebookSession` / fs adapter.
+- `PLAN.md` is the main actionable plan. `IMPROVEMENTS-PLAN.md` remains as a more detailed improvement note.
 
-## Todo
+## Why these priorities
 
-- [ ] Tooling
-  - [x] Add Biome config + package scripts
-  - [x] Add `typecheck` and make `check` run typecheck + Biome
-  - [x] Install `bun-types` and wire TS to use it directly
-  - [x] Tighten TS config with stricter checking flags and fix resulting type issues
-  - [x] Migrate Biome config and clear current lint warnings
-  - [ ] Refresh lockfile / verify CLI once Bun tempdir issue is gone
-- [x] Package scaffold
-  - [x] Turn repo root into a Pi package
-  - [x] Add extension entry under `extensions/notebook/`
-  - [x] Set up minimal `bun test` checks
-- [x] Read-only notebook support
-  - [x] Implement notebook parse/summary/read core
-  - [x] Implement `notebook_summary`
-  - [x] Implement `notebook_read_cell`
-- [~] Cell source mutation support
-  - [x] Implement load/save mutation path
-  - [x] Implement `notebook_write_cell`
-  - [x] Implement `notebook_edit_cell`
-  - [x] Define/implement cell id normalization helpers
-- [x] Structural notebook operations
-  - [x] Implement `notebook_insert`
-  - [x] Implement `notebook_delete`
-  - [x] Implement `notebook_move`
-  - [x] Implement `notebook_merge`
-  - [x] Implement `notebook_clear_outputs`
-  - [x] Implement `notebook_read_cell_output`
-  - [x] Implement `notebook_read_cell_attachment`
-  - [x] Simplify read to single-cell `notebook_read_cell` with optional line slicing
-- [~] Verification
-  - [x] Add tests for existing parse/read/write/edit operations
-  - [x] Add real `.ipynb` fixture coverage for current behavior
-  - [x] Add tests for remaining mutation operations
-  - [x] Split tests by layer/tool/workflow for maintainability
-  - [x] Keep `bun test` green after TS/Biome tightening
-  - [~] Verify current tools on real notebooks through Pi / local runner
+- Main correctness risk: Pi can run sibling tool calls in parallel; unqueued notebook mutations can lose writes.
+- Main locality issue: mutation runners repeat load → select → ensure ids → mutate → save → format confirmation.
+- `tools.ts` vs `index.ts` is not the real problem. The existing split is useful because tests and the smoke runner call runners directly without booting Pi.
+
+## Current priorities
+
+### P0. Pi package / doc compliance
+
+- [x] Add `@mariozechner/pi-ai: "*"` to `peerDependencies`.
+  - note: `tools.ts` imports `@mariozechner/pi-ai` for `StringEnum`; Pi package docs want bundled Pi core imports declared as peers.
+  - verify: `bun run check`
+- [x] Normalize notebook path args at the adapter seam.
+  - [x] strip one leading `@` (models sometimes include it — see pi docs extensions.md line 1670)
+  - [x] resolve relative paths against `ctx.cwd`
+  - [x] pass normalized absolute paths into runners / queueing
+  - preferred shape: normalize once in `index.ts` `execute(..., ctx)` before calling runners
+  - verify: focused tool/adapter test if practical, else local smoke + `bun run check`
+
+### P1. Correctness under concurrent mutations
+
+- [x] Wrap full read-modify-write windows in `withFileMutationQueue()` for:
+  - [x] `notebook_write_cell`
+  - [x] `notebook_edit_cell`
+  - [x] `notebook_insert`
+  - [x] `notebook_delete`
+  - [x] `notebook_move`
+  - [x] `notebook_merge`
+  - [x] `notebook_clear_outputs`
+- [x] Keep read-only tools unqueued.
+- [x] Queue at the adapter seam, not in notebook-core.
+  - preferred shape: `withFileMutationQueue(normalizedPath, () => runNotebookX({ ...params, path: normalizedPath }))`
+- [x] Verification: `bun test` + `bun run check`.
+  - concurrency regression test not added in this pass
+
+### P2. Mutation orchestration cleanup
+
+- [x] Introduce one internal helper for load → ensure ids → mutate → save.
+  - target shape:
+    ```ts
+    async function mutateNotebook(path, mutate) {
+      const notebook = await loadNotebook(path)
+      const assigned = ensureCellIds(notebook)
+      const result = mutate(notebook)
+      await saveNotebook(path, notebook)
+      return { assigned, result }
+    }
+    ```
+- [x] Move repeated mutation runner boilerplate onto that helper.
+- [x] Keep tool-specific selector validation / confirmation formatting in each runner.
+- [x] Do not add a broader filesystem abstraction unless tests are actually blocked by disk I/O.
+- [x] Verify existing mutation/workflow tests still pass unchanged.
+
+### P3. Public interface trim
+
+- [x] Remove `readCellsById` export unless an actual near-term tool needs it.
+- [x] Remove `readCellRange` export unless an actual near-term tool needs it.
+- [x] Update tests to cover supported read primitives instead:
+  - [x] `readAllCells`
+  - [x] `readCellById`
+  - [x] index reads through tool runners
+- [x] Verify: `bun test`
+
+## Non-goals for this pass
+
+- [x] Do not merge `tools.ts` into `index.ts`.
+- [x] Do not build a full `NotebookSession` / filesystem adapter now.
+- [x] Do not split formatting into a separate presentation module yet.
+- [x] Do not normalize outputs into a new module yet.
+- [x] Do not touch the `scripts/run-notebook-tool.ts` cast unless already nearby.
+
+## Suggested execution order
+
+- [x] 1. Package/doc compliance: peer dep, path normalization.
+- [x] 2. Queue all mutation tools with `withFileMutationQueue()`.
+- [x] 3. Consolidate mutation load/id/save helper.
+- [x] 4. Remove dead read exports if still unused.
+- [x] 5. Re-run `bun test` and `bun run check` after each meaningful step.
+
+## Existing work, mostly done
+
+### Tooling
+
+- [x] Add Biome config + package scripts.
+- [x] Add `typecheck`; make `check` run typecheck + Biome.
+- [x] Install `bun-types` and wire TS to use it directly.
+- [x] Tighten TS config; fix resulting type issues.
+- [x] Migrate Biome config and clear current lint warnings.
+- [ ] Refresh lockfile / verify CLI once Bun tempdir issue is gone.
+
+### Package scaffold
+
+- [x] Turn repo root into a Pi package.
+- [x] Add extension entry under `extensions/notebook/`.
+- [x] Set up minimal `bun test` checks.
+
+### Read-only notebook support
+
+- [x] Implement notebook parse/summary/read core.
+- [x] Implement `notebook_summary`.
+- [x] Implement `notebook_read_cell`.
+
+### Mutation support
+
+- [x] Implement load/save mutation path.
+- [x] Implement `notebook_write_cell`.
+- [x] Implement `notebook_edit_cell`.
+- [x] Define / implement cell id normalization helpers.
+
+### Structural notebook operations
+
+- [x] Implement `notebook_insert`.
+- [x] Implement `notebook_delete`.
+- [x] Implement `notebook_move`.
+- [x] Implement `notebook_merge`.
+- [x] Implement `notebook_clear_outputs`.
+- [x] Implement `notebook_read_cell_output`.
+- [x] Implement `notebook_read_cell_attachment`.
+- [x] Simplify reads to single-cell `notebook_read_cell` with optional line slicing.
+
+### Verification
+
+- [x] Add tests for parse/read/write/edit operations.
+- [x] Add real `.ipynb` fixture coverage.
+- [x] Add tests for remaining mutation operations.
+- [x] Split tests by layer/tool/workflow.
+- [x] Keep `bun test` green after TS/Biome tightening.
+- [ ] Verify current tools on real notebooks through Pi / local runner.

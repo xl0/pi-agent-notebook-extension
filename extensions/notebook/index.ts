@@ -1,4 +1,6 @@
+import { isAbsolute, resolve } from "node:path"
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent"
+import { withFileMutationQueue } from "@mariozechner/pi-coding-agent"
 import {
 	notebookClearOutputsParams,
 	notebookDeleteParams,
@@ -24,6 +26,13 @@ import {
 	runNotebookWriteCell
 } from "./tools"
 
+// Some models include a leading @ in path arguments; built-in tools strip it.
+// Keep this aligned with pi docs/extensions.md path-tool guidance.
+function normalizeNotebookPath(rawPath: string, cwd: string): string {
+	const stripped = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath
+	return isAbsolute(stripped) ? stripped : resolve(cwd, stripped)
+}
+
 export default function notebookExtension(pi: ExtensionAPI) {
 	const notebookToolGuidelines = [
 		"Notebook tools: use notebook_summary first to discover structure and cell ids.",
@@ -42,8 +51,8 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		promptSnippet: "Discover existing cells",
 		promptGuidelines: notebookToolGuidelines,
 		parameters: notebookSummaryParams,
-		async execute(_toolCallId, params) {
-			return runNotebookSummary(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			return runNotebookSummary({ path: normalizeNotebookPath(params.path, ctx.cwd) })
 		}
 	})
 
@@ -53,8 +62,8 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Read one notebook cell source.",
 		promptSnippet: "Read one notebook cell source, optionally by line slice.",
 		parameters: notebookReadCellParams,
-		async execute(_toolCallId, params) {
-			return runNotebookReadCell(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			return runNotebookReadCell({ ...params, path: normalizeNotebookPath(params.path, ctx.cwd) })
 		}
 	})
 
@@ -64,8 +73,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Replace one notebook cell source.",
 		promptSnippet: "Replace one notebook cell source.",
 		parameters: notebookWriteCellParams,
-		async execute(_toolCallId, params) {
-			return runNotebookWriteCell(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookWriteCell({ ...params, path }))
 		}
 	})
 
@@ -75,8 +85,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Apply exact source replacements within one notebook cell.",
 		promptSnippet: "Edit part of one notebook cell with exact text replacements.",
 		parameters: notebookEditCellParams,
-		async execute(_toolCallId, params) {
-			return runNotebookEditCell(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookEditCell({ ...params, path }))
 		}
 	})
 
@@ -86,8 +97,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Insert one notebook cell near an anchor.",
 		promptSnippet: "Insert a new code, markdown, or raw cell near an existing anchor.",
 		parameters: notebookInsertParams,
-		async execute(_toolCallId, params) {
-			return runNotebookInsert(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookInsert({ ...params, path }))
 		}
 	})
 
@@ -97,8 +109,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Delete one notebook cell.",
 		promptSnippet: "Delete one notebook cell.",
 		parameters: notebookDeleteParams,
-		async execute(_toolCallId, params) {
-			return runNotebookDelete(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookDelete({ ...params, path }))
 		}
 	})
 
@@ -108,8 +121,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Move one notebook cell relative to another.",
 		promptSnippet: "Move one notebook cell before or after another.",
 		parameters: notebookMoveParams,
-		async execute(_toolCallId, params) {
-			return runNotebookMove(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookMove({ ...params, path }))
 		}
 	})
 
@@ -119,8 +133,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Merge one notebook cell with an adjacent cell.",
 		promptSnippet: "Merge one notebook cell with the cell above or below.",
 		parameters: notebookMergeParams,
-		async execute(_toolCallId, params) {
-			return runNotebookMerge(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookMerge({ ...params, path }))
 		}
 	})
 
@@ -130,8 +145,9 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Clear outputs from one code cell.",
 		promptSnippet: "Remove outputs from one code cell.",
 		parameters: notebookClearOutputsParams,
-		async execute(_toolCallId, params) {
-			return runNotebookClearOutputs(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const path = normalizeNotebookPath(params.path, ctx.cwd)
+			return withFileMutationQueue(path, () => runNotebookClearOutputs({ ...params, path }))
 		}
 	})
 
@@ -141,8 +157,8 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Read one output from a code cell. Supports text and image outputs.",
 		promptSnippet: "Read a specific cell output by index. Use notebook_summary first to discover available outputs and their mime types.",
 		parameters: notebookReadOutputParams,
-		async execute(_toolCallId, params) {
-			return runNotebookReadOutput(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			return runNotebookReadOutput({ ...params, path: normalizeNotebookPath(params.path, ctx.cwd) })
 		}
 	})
 
@@ -152,8 +168,8 @@ export default function notebookExtension(pi: ExtensionAPI) {
 		description: "Read an image attachment from a cell by its key.",
 		promptSnippet: "Read a cell attachment image. Use notebook_summary first to discover available attachment keys (atts attribute).",
 		parameters: notebookReadCellAttachmentParams,
-		async execute(_toolCallId, params) {
-			return runNotebookReadCellAttachment(params)
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			return runNotebookReadCellAttachment({ ...params, path: normalizeNotebookPath(params.path, ctx.cwd) })
 		}
 	})
 }
